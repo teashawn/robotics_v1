@@ -36,11 +36,8 @@ class ROBOT_DIRECTION(IntEnum):
         return self.name
 
 class TILE_TYPE(IntEnum):
-    #PLAYER = 66
-    #ENEMY = 69
     SMALL_OBSTACLE = 120
     BIG_OBSTACLE = 88
-    #EMPTY = 46
     OUT_OF_BOUND = 35
     CRYSTAL_CYAN = 99
     CRYSTAL_PURPLE = 112
@@ -116,6 +113,7 @@ class RobotMoveClientAsync(Node):
 
     def __init__(self):
         super().__init__('robot_move_client_async')
+        self.moves = 0
         self.cli = self.create_client(RobotMove, 'move_robot')
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
@@ -134,8 +132,12 @@ class RobotMoveClientAsync(Node):
         error_reason = move_response.robot_position_response.error_reason
         surrounding_tiles = SurroundingTiles(*move_response.robot_position_response.surrounding_tiles)
         robot_dir = ROBOT_DIRECTION(move_response.robot_position_response.robot_dir)
+
+        if success:
+            self.moves += 1
+
         self.get_logger().info(
-            f"\nSuccess: {success},\nError reason: {error_reason},\nSurrounding tiles: {surrounding_tiles},\nDirection: {robot_dir}\n"
+            f"\nSuccess: {success},\nError reason: {error_reason},\nSurrounding tiles: {surrounding_tiles},\nDirection: {robot_dir}\nMoves: {self.moves}"
         )
 
         return move_response.robot_position_response
@@ -484,6 +486,8 @@ def main(args=None):
         else:
             move_response = robot_move_client.move(res.move_type)
             res = explorer.update(res.move_type, move_response)
+
+    print(f"Revealed map in {robot_move_client.moves} moves.")
 
     # Shut down
     query_intial_robot_position_client.destroy_node()
