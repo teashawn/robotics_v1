@@ -35,7 +35,14 @@ def main(args=None):
     print(f"Revealed map in {robot_move_client.moves} moves.")
 
     destination = models.MapNode(5,6)
-    print(explorer.get_path(destination))
+    steps = explorer.get_path(destination)
+    print(f"Steps: {steps}")
+    moves = explorer.get_moves(steps)
+    print(f"Moves: {moves}")
+
+    for m in moves:
+        move_response = robot_move_client.move(m)
+        explorer.update(m, move_response)
 
     # Shut down
     query_intial_robot_position_client.destroy_node()

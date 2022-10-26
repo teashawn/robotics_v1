@@ -3,12 +3,117 @@ import numpy as np
 import networkx as nx
 from typing import (
     List,
-    Dict
+    Dict,
+    Tuple
 )
 from pprint import pprint
 
+"""
+direction: move -> new direction
+
+1-st level keys designate the current robot direction
+2-nd level keys are the move of the robot
+
+The innermost values are the resulting directions
+"""
+ROTATION_MAP = {
+    models.ROBOT_DIRECTION.UP: {
+        models.ROBOT_MOVE_TYPE.FORWARD: models.ROBOT_DIRECTION.UP,
+        models.ROBOT_MOVE_TYPE.ROTATE_LEFT: models.ROBOT_DIRECTION.LEFT,
+        models.ROBOT_MOVE_TYPE.ROTATE_RIGHT: models.ROBOT_DIRECTION.RIGHT,
+    },
+    models.ROBOT_DIRECTION.RIGHT: {
+        models.ROBOT_MOVE_TYPE.FORWARD: models.ROBOT_DIRECTION.RIGHT,
+        models.ROBOT_MOVE_TYPE.ROTATE_LEFT: models.ROBOT_DIRECTION.UP,
+        models.ROBOT_MOVE_TYPE.ROTATE_RIGHT: models.ROBOT_DIRECTION.DOWN,
+    },
+    models.ROBOT_DIRECTION.DOWN: {
+        models.ROBOT_MOVE_TYPE.FORWARD: models.ROBOT_DIRECTION.DOWN,
+        models.ROBOT_MOVE_TYPE.ROTATE_LEFT: models.ROBOT_DIRECTION.RIGHT,
+        models.ROBOT_MOVE_TYPE.ROTATE_RIGHT: models.ROBOT_DIRECTION.LEFT,
+    },
+    models.ROBOT_DIRECTION.LEFT: {
+        models.ROBOT_MOVE_TYPE.FORWARD: models.ROBOT_DIRECTION.LEFT,
+        models.ROBOT_MOVE_TYPE.ROTATE_LEFT: models.ROBOT_DIRECTION.DOWN,
+        models.ROBOT_MOVE_TYPE.ROTATE_RIGHT: models.ROBOT_DIRECTION.UP,
+    },
+}
+
+"""
+orientation: target -> rotations
+
+1-st level keys designate the current robot direction
+2-nd level keys are the desired direction of the robot
+
+The innermost values are the list of turns that need
+to be performed in order to reach the target direction
+"""
+REORIENTATION_MAP = {
+    models.ROBOT_DIRECTION.UP: {
+        models.ROBOT_DIRECTION.UP: [
+
+        ],
+        models.ROBOT_DIRECTION.RIGHT: [
+            models.ROBOT_MOVE_TYPE.ROTATE_RIGHT
+        ],
+        models.ROBOT_DIRECTION.DOWN: [
+            models.ROBOT_MOVE_TYPE.ROTATE_RIGHT,
+            models.ROBOT_MOVE_TYPE.ROTATE_RIGHT,
+        ],
+        models.ROBOT_DIRECTION.LEFT: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+    },
+    models.ROBOT_DIRECTION.RIGHT: {
+        models.ROBOT_DIRECTION.UP: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+        models.ROBOT_DIRECTION.RIGHT: [
+            
+        ],
+        models.ROBOT_DIRECTION.DOWN: [
+            models.ROBOT_MOVE_TYPE.ROTATE_RIGHT,
+        ],
+        models.ROBOT_DIRECTION.LEFT: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT,
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+    },
+    models.ROBOT_DIRECTION.DOWN: {
+        models.ROBOT_DIRECTION.UP: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT,
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+        models.ROBOT_DIRECTION.RIGHT: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+        models.ROBOT_DIRECTION.DOWN: [
+            
+        ],
+        models.ROBOT_DIRECTION.LEFT: [
+            models.ROBOT_MOVE_TYPE.ROTATE_RIGHT,
+        ],
+    },
+    models.ROBOT_DIRECTION.LEFT: {
+        models.ROBOT_DIRECTION.UP: [
+            models.ROBOT_MOVE_TYPE.ROTATE_RIGHT
+        ],
+        models.ROBOT_DIRECTION.RIGHT: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT,
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+        models.ROBOT_DIRECTION.DOWN: [
+            models.ROBOT_MOVE_TYPE.ROTATE_LEFT
+        ],
+        models.ROBOT_DIRECTION.LEFT: [
+            
+        ],
+    },
+}
+
 class MapExplorer:
     def __init__(self, debug : bool):
+        # TODO: remove?
         self.INITIAL_TILE : models.TILE_TYPE = None
         self.DIRECTION : models.ROBOT_DIRECTION = None
         self.SURROUNDING_TILES : models.SurroundingTiles = None
@@ -107,6 +212,70 @@ class MapExplorer:
         self.GRAPH = self._get_nav_graph()
         origin = models.MapNode(self.ROW, self.COLUMN)
         return nx.astar_path(self.GRAPH, origin, destination, heuristic=MapExplorer.manhattan_distance, weight=MapExplorer._nav_edge_weight)
+
+    def get_moves(self, steps : List[Tuple[int,int]]) -> List[models.ROBOT_MOVE_TYPE]:
+        moves : List[models.ROBOT_MOVE_TYPE] = []
+
+        dir = self.DIRECTION
+        pos = models.MapNode(self.ROW, self.COLUMN)
+
+        # skip the first step, as it is our current position
+        for s in steps[1:]:
+            next_pos = models.MapNode(s.row, s.column)
+            row_delta = next_pos.row - pos.row
+            col_delta = next_pos.column - pos.column
+
+            step_moves = []
+
+            if row_delta > 0:
+                # rotate down and move forward
+                step_moves.extend(REORIENTATION_MAP[dir][models.ROBOT_DIRECTION.DOWN])
+                step_moves.append(models.ROBOT_MOVE_TYPE.FORWARD)
+
+                # TODO: not ideal to set it here, but will do for now
+                pos = models.MapNode(pos.row+1, pos.column)
+            elif row_delta < 0:
+                # rotate up and move forward
+                step_moves.extend(REORIENTATION_MAP[dir][models.ROBOT_DIRECTION.UP])
+                step_moves.append(models.ROBOT_MOVE_TYPE.FORWARD)
+
+                # TODO: not ideal to set it here, but will do for now
+                pos = models.MapNode(pos.row-1, pos.column)
+            
+            # process the steps so far in order to
+            # keep track of the robot direction
+            # this is important for cases when we
+            # need to move diagonally
+            for m in step_moves:
+                # store the move
+                moves.append(m)
+                # update direction after move
+                dir = ROTATION_MAP[dir][m]
+
+            step_moves = []
+
+            if col_delta > 0:
+                # rotate right and move forward
+                step_moves.extend(REORIENTATION_MAP[dir][models.ROBOT_DIRECTION.RIGHT])
+                step_moves.append(models.ROBOT_MOVE_TYPE.FORWARD)
+
+                # TODO: not ideal to set it here, but will do for now
+                pos = models.MapNode(pos.row, pos.column+1)
+            elif col_delta < 0:
+                # rotate left and move forward
+                step_moves.extend(REORIENTATION_MAP[dir][models.ROBOT_DIRECTION.LEFT])
+                step_moves.append(models.ROBOT_MOVE_TYPE.FORWARD)
+
+                # TODO: not ideal to set it here, but will do for now
+                pos = models.MapNode(pos.row, pos.column-1)
+            
+            for m in step_moves:
+                # store the move
+                moves.append(m)
+                # update direction after move
+                dir = ROTATION_MAP[dir][m]
+
+        return moves
 
     def _update_position(self) -> None:
         if self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
