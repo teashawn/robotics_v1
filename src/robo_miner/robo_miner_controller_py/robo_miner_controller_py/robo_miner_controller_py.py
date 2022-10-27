@@ -6,6 +6,30 @@ Notes:
 - count number of turns to detect looping
 """
 
+def reveal_map(move_client, explorer, res):
+    while res.next_step != models.MapMoveResult.FINISH:
+        if res.next_step == models.MapMoveResult.BACKTRACK:
+            # Turn around
+            move_response = move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
+            res = explorer.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
+            move_response = move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
+            res = explorer.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
+        else:
+            move_response = move_client.move(res.move_type)
+            res = explorer.update(res.move_type, move_response)
+
+    print(f"Revealed map in {move_client.moves} moves.")
+
+def navigate(move_client, explorer, destination):
+    steps = explorer.get_path(destination)
+    print(f"Steps: {steps}")
+    moves = explorer.get_moves(steps)
+    print(f"Moves: {moves}")
+
+    for m in moves:
+        move_response = move_client.move(m)
+        explorer.update(m, move_response)
+
 def main(args=None):
     rclpy.init(args=args)
 
@@ -22,29 +46,11 @@ def main(args=None):
     res = explorer.init(response)
 
     # Traverse map
-    while res.next_step != models.MapMoveResult.FINISH:
-        if res.next_step == models.MapMoveResult.BACKTRACK:
-            # Turn around
-            move_response = move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
-            res = explorer.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
-            move_response = move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
-            res = explorer.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
-        else:
-            move_response = move_client.move(res.move_type)
-            res = explorer.update(res.move_type, move_response)
-
-    print(f"Revealed map in {move_client.moves} moves.")
+    reveal_map(move_client, explorer, res)
 
     # Navigate to specific coordinates
     destination = models.MapNode(5,6)
-    steps = explorer.get_path(destination)
-    print(f"Steps: {steps}")
-    moves = explorer.get_moves(steps)
-    print(f"Moves: {moves}")
-
-    for m in moves:
-        move_response = move_client.move(m)
-        explorer.update(m, move_response)
+    navigate(move_client, explorer, destination)
 
     # Shut down
     initial_position_client.destroy_node()
