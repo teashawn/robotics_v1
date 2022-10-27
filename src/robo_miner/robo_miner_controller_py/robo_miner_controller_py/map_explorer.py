@@ -558,7 +558,7 @@ class MapExplorer:
             or models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.right)
 
     def _explore_neighbours(self) -> models.MapUpdateResult:
-        check_tile = models.TILE_TYPE.is_passable_and_unexplored if self._detect_unexplored() else models.TILE_TYPE.is_passable
+        check_tile = models.TILE_TYPE.is_passable_and_unexplored #if self._detect_unexplored() else models.TILE_TYPE.is_passable
 
         if check_tile(self.SURROUNDING_TILES.forward):
             return models.MapUpdateResult(
@@ -583,31 +583,50 @@ class MapExplorer:
                     move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
                 )
 
-    def _find_closest_unexplored_tile(self) -> Optional[models.MapNode]:
+    def _find_closest_unexplored_tile(self, debug : Optional[bool] = None) -> Optional[models.MapNode]:
+        if debug:
+            print("Finding closest unexplored tile...")
+
         initial_row = self.ROW
         initial_column = self.COLUMN
         max_row, max_column = self.MAP.shape
         explored_queue = set((initial_row, initial_column))
+        total_considered = 0
 
         # check tiles in a concentrically expanding spiral
         for row, column in GenSpiral(initial_row, initial_column):
+            total_considered += 1
+            if debug:
+                print(f"Checking ({row}, {column})")
+
             already_checked = (row, column) in explored_queue
-            
-            # stop condition
             row_invalid = row < 0 or row >= max_row
             column_invalid = column < 0 or column >= max_column
-            if row_invalid and column_invalid:
+            
+            # stop condition
+            if abs(row - initial_row) >= max_row and abs(column - initial_column) >= max_column:
+                if debug:
+                    print(f"Breaking for double out of bounds [row_invalid: {row_invalid}, column_invalid: {column_invalid}]")
+                    print(f"row: {row}, column: {column}")
                 break
             
             # prune out of bounds and already checked coordinates
             if row_invalid or column_invalid or already_checked:
+                if debug:
+                    print(f"Pruning [row_invalid: {row_invalid}, column_invalid: {column_invalid}, already_checked: {already_checked}]")
                 continue
             
             explored_queue.add((row, column))
             val = self.MAP[row, column]
             if models.TILE_TYPE.is_passable_and_unexplored(val):
+                if debug:
+                    print(f"Bingo! [{row}, {column}]. Total considered: {total_considered}")
                 return models.MapNode(row, column)
+            elif debug:
+                print(f"Not passable and unexplored [passable: {models.TILE_TYPE.is_passable(val)}, unexplored: {models.TILE_TYPE.is_unexplored(val)}]")
         
+        if debug:
+            print(f"Bailing out! Total considered: {total_considered}")
         return None
 
     def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
@@ -638,6 +657,10 @@ class MapExplorer:
                     # navigate to it
                     return self.navigate(closest_unexplored)
                 else:
+                    if self.DEBUG and self.UNEXPLORED_TILES > 0:
+                        print("No path!!!\n\n\n\n")
+                        self._find_closest_unexplored_tile(debug=True)
+                        input()
                     # we have explored the entire map
                     return self._explore_neighbours()
         else:
