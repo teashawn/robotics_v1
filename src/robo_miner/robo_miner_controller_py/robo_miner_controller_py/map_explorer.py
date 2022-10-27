@@ -1,4 +1,4 @@
-from robo_miner_controller_py import models, service_clients
+from robo_miner_controller_py import models, service_clients, algo
 import numpy as np
 import networkx as nx
 from typing import (
@@ -135,7 +135,7 @@ REORIENTATION_MAP = {
 }
 
 class MapExplorer:
-    def __init__(self, debug : bool):
+    def __init__(self, debug : bool, use_turn_aware_pathfinding: bool):
         # TODO: remove?
         self.INITIAL_TILE : models.TILE_TYPE = None
         self.DIRECTION : models.ROBOT_DIRECTION = None
@@ -147,6 +147,7 @@ class MapExplorer:
         self.UNEXPLORED_TILES = 0
         self.DEBUG = debug
         self.NAVIGATING = False
+        self.TURN_AWARE = use_turn_aware_pathfinding
         self.initial_position_client = service_clients.QueryInitialRobotPositionClientAsync(debug)
         self.move_client = service_clients.RobotMoveClientAsync(debug)
         self.validate_client = service_clients.FieldMapValidateClientAsync(debug)
@@ -220,7 +221,7 @@ class MapExplorer:
         # create edges
         for k, v in edges.items():
             for edge in v:
-                G.add_edge(k, edge)
+                G.add_edge(k, edge, weight=1)
 
         return G
 
@@ -238,13 +239,27 @@ class MapExplorer:
         x2, y2 = b.row, b.column
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
 
-    def _nav_edge_weight(a : models.MapNode, b : models.MapNode, attributes : dict) -> int:
-        return 1
-
     def get_path(self, destination : models.MapNode):
         self.GRAPH = self._get_nav_graph()
         origin = models.MapNode(self.ROW, self.COLUMN)
-        return nx.astar_path(self.GRAPH, origin, destination, heuristic=MapExplorer.manhattan_distance, weight=MapExplorer._nav_edge_weight)
+        if self.TURN_AWARE:
+            return algo.astar_path(
+                self.GRAPH,
+                origin,
+                destination,
+                self.DIRECTION,
+                heuristic=MapExplorer.manhattan_distance,
+                weight="weight"
+            )
+        else:
+            return nx.astar_path(
+                self.GRAPH,
+                origin,
+                destination,
+                heuristic=MapExplorer.manhattan_distance,
+                weight="weight"
+            )
+        
 
     def get_moves(self, steps : List[Tuple[int,int]]) -> List[models.ROBOT_MOVE_TYPE]:
         moves : List[models.ROBOT_MOVE_TYPE] = []

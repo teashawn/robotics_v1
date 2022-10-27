@@ -10,7 +10,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     # State
-    explorer = map_explorer.MapExplorer(debug=True)
+    explorer = map_explorer.MapExplorer(debug=True, use_turn_aware_pathfinding=True)
 
     # Traverse map
     explorer.reveal_map()
