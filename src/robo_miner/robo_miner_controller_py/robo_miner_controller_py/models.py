@@ -35,6 +35,7 @@ class TILE_TYPE(IntEnum):
     CRYSTAL_BLUE = 98
     CRYSTAL_GREEN = 103
     CRYSTAL_RED = 114
+    UNKNOWN = 0
 
     def is_unexplored(val):
         return val < EXPLORED_MARKER
@@ -51,7 +52,8 @@ class TILE_TYPE(IntEnum):
         return val not in [
             TILE_TYPE.SMALL_OBSTACLE,
             TILE_TYPE.BIG_OBSTACLE,
-            TILE_TYPE.OUT_OF_BOUND
+            TILE_TYPE.OUT_OF_BOUND,
+            TILE_TYPE.UNKNOWN
         ]
 
     def __str__(self):

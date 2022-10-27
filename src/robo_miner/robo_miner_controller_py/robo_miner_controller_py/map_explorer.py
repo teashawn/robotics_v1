@@ -1,12 +1,35 @@
-from robo_miner_controller_py import models
+from robo_miner_controller_py import models, service_clients
 import numpy as np
 import networkx as nx
 from typing import (
     List,
     Dict,
-    Tuple
+    Tuple,
+    Optional
 )
 from pprint import pprint
+import math
+import sys
+
+# Credits: https://math.stackexchange.com/a/3448361
+def GenSpiral(x, y):
+    for n in range(sys.maxsize):
+        k = math.ceil((math.sqrt(n) - 1) / 2.0)
+        t = 2 * k + 1
+        m = t ** 2
+        t = t - 1
+        if n >= m - t:
+            yield x + k - (m - n), y - k
+        else:
+            m = m - t
+        if n >= m - t:
+            yield x + -k, y -k + (m - n)
+        else:
+            m = m - t
+        if n >= m - t:
+            yield x -k + (m - n), y + k
+        else:
+            yield x + k, y + k - (m - n - t)
 
 """
 direction: move -> new direction
@@ -123,15 +146,25 @@ class MapExplorer:
         self.GRAPH = nx.Graph()
         self.UNEXPLORED_TILES = 0
         self.DEBUG = debug
+        self.NAVIGATING = False
+        self.initial_position_client = service_clients.QueryInitialRobotPositionClientAsync(debug)
+        self.move_client = service_clients.RobotMoveClientAsync(debug)
+        self.validate_client = service_clients.FieldMapValidateClientAsync(debug)
+    
+    def __del__(self):
+        self.initial_position_client.destroy_node()
+        self.move_client.destroy_node()
+        self.validate_client.destroy_node()
 
     def print_state(self):
         print("####################################")
         print(f"# Map Explorer State:")
-        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}")
+        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}, Navigating: {self.NAVIGATING}")
         pprint(self.MAP)
         print("####################################")
 
-    def init(self, response) -> models.MapUpdateResult:
+    def init(self) -> models.MapUpdateResult:
+        response = self.initial_position_client.query()
         self.INITIAL_TILE = models.TILE_TYPE(response.robot_initial_tile)
         self.MAP[0,0] = self.INITIAL_TILE.value + models.EXPLORED_MARKER
 
@@ -509,23 +542,7 @@ class MapExplorer:
             or models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.left) \
             or models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.right)
 
-    def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
-        if response.success and move_type == models.ROBOT_MOVE_TYPE.FORWARD:
-            # we moved to a new tile, as opposed to only changing direction
-            self._update_position()
-            if models.TILE_TYPE.is_passable_and_unexplored(self.MAP[self.ROW, self.COLUMN]):
-                self.MAP[self.ROW, self.COLUMN] += models.EXPLORED_MARKER
-                self.UNEXPLORED_TILES -= 1
-    
-        self.DIRECTION = models.ROBOT_DIRECTION(response.robot_dir)
-        self.SURROUNDING_TILES = models.SurroundingTiles(*response.surrounding_tiles)
-
-        self._update_map()
-
-        if self.DEBUG:
-            self.print_state()
-            print("\n" + chr(176)*70)
-
+    def _explore_neighbours(self) -> models.MapUpdateResult:
         check_tile = models.TILE_TYPE.is_passable_and_unexplored if self._detect_unexplored() else models.TILE_TYPE.is_passable
 
         if check_tile(self.SURROUNDING_TILES.forward):
@@ -550,3 +567,105 @@ class MapExplorer:
                     next_step=models.MapMoveResult.FINISH,
                     move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
                 )
+
+    def _find_closest_unexplored_tile(self) -> Optional[models.MapNode]:
+        initial_row = self.ROW
+        initial_column = self.COLUMN
+        max_row, max_column = self.MAP.shape
+        explored_queue = set((initial_row, initial_column))
+
+        # check tiles in a concentrically expanding spiral
+        for row, column in GenSpiral(initial_row, initial_column):
+            already_checked = (row, column) in explored_queue
+            
+            # stop condition
+            row_invalid = row < 0 or row >= max_row
+            column_invalid = column < 0 or column >= max_column
+            if row_invalid and column_invalid:
+                break
+            
+            # prune out of bounds and already checked coordinates
+            if row_invalid or column_invalid or already_checked:
+                continue
+            
+            explored_queue.add((row, column))
+            val = self.MAP[row, column]
+            if models.TILE_TYPE.is_passable_and_unexplored(val):
+                return models.MapNode(row, column)
+        
+        return None
+
+    def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
+        if response.success and move_type == models.ROBOT_MOVE_TYPE.FORWARD:
+            # we moved to a new tile, as opposed to only changing direction
+            self._update_position()
+            if models.TILE_TYPE.is_passable_and_unexplored(self.MAP[self.ROW, self.COLUMN]):
+                self.MAP[self.ROW, self.COLUMN] += models.EXPLORED_MARKER
+                self.UNEXPLORED_TILES -= 1
+    
+        self.DIRECTION = models.ROBOT_DIRECTION(response.robot_dir)
+        self.SURROUNDING_TILES = models.SurroundingTiles(*response.surrounding_tiles)
+
+        self._update_map()
+
+        if self.DEBUG:
+            self.print_state()
+            print("\n" + chr(176)*70)
+
+        if not self.NAVIGATING:
+            if self._detect_unexplored():
+                # there are unexplored tiles in our immediate neighbours
+                return self._explore_neighbours()
+            else:
+                # find closest unexplored tile
+                closest_unexplored = self._find_closest_unexplored_tile()
+                if closest_unexplored:
+                    # navigate to it
+                    return self.navigate(closest_unexplored)
+                else:
+                    # we have explored the entire map
+                    return self._explore_neighbours()
+        else:
+            # skip calculations if we are navigating and thus not
+            # interested in figuring out our next move
+            return models.MapUpdateResult(
+                next_step=models.MapMoveResult.CONTINUE,
+                move_type=models.ROBOT_MOVE_TYPE.UNKNOWN)
+    
+    def reveal_map(self):
+        res = self.init()
+
+        while res.next_step != models.MapMoveResult.FINISH:
+            if res.next_step == models.MapMoveResult.BACKTRACK:
+                # Turn around
+                move_response = self.move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
+                res = self.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
+                move_response = self.move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
+                res = self.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
+            else:
+                move_response = self.move_client.move(res.move_type)
+                res = self.update(res.move_type, move_response)
+
+        print(f"Revealed map in {self.move_client.moves} moves.")
+
+    def navigate(self, destination):
+        if self.DEBUG:
+            print("Starting navigation...")
+
+        self.NAVIGATING = True
+
+        steps = self.get_path(destination)
+        moves = self.get_moves(steps)
+
+        for m in moves:
+            move_response = self.move_client.move(m)
+            self.update(m, move_response)
+
+        self.NAVIGATING = False
+
+        if self.DEBUG:
+            print("Finished navigation.")
+
+        return self._explore_neighbours()
+
+        

@@ -6,56 +6,20 @@ Notes:
 - count number of turns to detect looping
 """
 
-def reveal_map(move_client, explorer, res):
-    while res.next_step != models.MapMoveResult.FINISH:
-        if res.next_step == models.MapMoveResult.BACKTRACK:
-            # Turn around
-            move_response = move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
-            res = explorer.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
-            move_response = move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
-            res = explorer.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
-        else:
-            move_response = move_client.move(res.move_type)
-            res = explorer.update(res.move_type, move_response)
-
-    print(f"Revealed map in {move_client.moves} moves.")
-
-def navigate(move_client, explorer, destination):
-    steps = explorer.get_path(destination)
-    print(f"Steps: {steps}")
-    moves = explorer.get_moves(steps)
-    print(f"Moves: {moves}")
-
-    for m in moves:
-        move_response = move_client.move(m)
-        explorer.update(m, move_response)
-
 def main(args=None):
     rclpy.init(args=args)
 
     # State
-    explorer = map_explorer.MapExplorer(True)
-
-    # Service clients
-    initial_position_client = service_clients.QueryInitialRobotPositionClientAsync(False)
-    move_client = service_clients.RobotMoveClientAsync(False)
-    validate_client = service_clients.FieldMapValidateClientAsync(False)
-    
-    # Get initial position
-    response = initial_position_client.query()
-    res = explorer.init(response)
+    explorer = map_explorer.MapExplorer(debug=True)
 
     # Traverse map
-    reveal_map(move_client, explorer, res)
+    explorer.reveal_map()
 
     # Navigate to specific coordinates
-    destination = models.MapNode(5,6)
-    navigate(move_client, explorer, destination)
+    #destination = models.MapNode(5,6)
+    #explorer.navigate(destination)
 
     # Shut down
-    initial_position_client.destroy_node()
-    move_client.destroy_node()
-    validate_client.destroy_node()
     rclpy.shutdown()
 
 
