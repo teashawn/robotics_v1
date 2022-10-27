@@ -518,7 +518,6 @@ class MapExplorer:
                 self.UNEXPLORED_TILES -= 1
     
         self.DIRECTION = models.ROBOT_DIRECTION(response.robot_dir)
-        # TODO: get surrounding value from explored map, is available
         self.SURROUNDING_TILES = models.SurroundingTiles(*response.surrounding_tiles)
 
         self._update_map()
@@ -526,8 +525,6 @@ class MapExplorer:
         if self.DEBUG:
             self.print_state()
             print("\n" + chr(176)*70)
-            # TODO: remove
-            #input()
 
         check_tile = models.TILE_TYPE.is_passable_and_unexplored if self._detect_unexplored() else models.TILE_TYPE.is_passable
 
