@@ -1,4 +1,5 @@
 from enum import IntEnum
+from typing import Tuple
 
 EXPLORED_MARKER = 1000
 
@@ -114,3 +115,48 @@ class MapNode:
     @property
     def column(self):
         return self._column
+
+class FrameSize():
+    def __init__(self, width : int, height : int):
+        self.width = width
+        self.height = height
+
+    def init_with_tuple(t : Tuple[int,int]):
+        return FrameSize(t[0], t[1])
+
+    def __eq__(self, other):
+        return self.width == other.width and self.height == other.height
+
+    def __ne__(self, other):
+        return not (self.width == other.width and self.height == other.height)
+
+    def __lte__(self, other):
+        return self.width <= other.width and self.height <= other.width
+
+    def __lt__(self, other):
+        return self.width < other.width and self.height < other.width
+
+    def __gte__(self, other):
+        return self.width >= other.width and self.height >= other.width
+
+    def __gt__(self, other):
+        return self.width > other.width and self.height > other.width
+
+class MapFrame():
+    def __init__(
+        self,
+        top_left : MapNode,
+        top_right : MapNode,
+        bottom_right : MapNode,
+        bottom_left : MapNode
+    ):
+        self.top_left = top_left
+        self.top_right = top_right
+        self.bottom_left = bottom_left
+        self.bottom_right = bottom_right
+
+    def contains(self, node : MapNode) -> bool:
+        return node.row <= self.top_left.row and \
+            node.row >= self.bottom_left.row and \
+            node.column >= self.top_left.column and \
+            node.column <= self.top_right.column

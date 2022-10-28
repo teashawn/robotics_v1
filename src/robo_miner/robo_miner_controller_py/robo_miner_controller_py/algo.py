@@ -1,4 +1,26 @@
 from robo_miner_controller_py import models
+import math
+import sys
+
+# Credits: https://math.stackexchange.com/a/3448361
+def GenSpiral(x, y):
+    for n in range(sys.maxsize):
+        k = math.ceil((math.sqrt(n) - 1) / 2.0)
+        t = 2 * k + 1
+        m = t ** 2
+        t = t - 1
+        if n >= m - t:
+            yield x + k - (m - n), y - k
+        else:
+            m = m - t
+        if n >= m - t:
+            yield x + -k, y -k + (m - n)
+        else:
+            m = m - t
+        if n >= m - t:
+            yield x -k + (m - n), y + k
+        else:
+            yield x + k, y + k - (m - n - t)
 
 """
 orientation: target -> rotations
@@ -37,6 +59,7 @@ REORIENTATION_COSTS = {
 }
 
 # Credits: original version: https://networkx.org/documentation/stable/_modules/networkx/algorithms/shortest_paths/astar.html
+# Below is a modified version to consider turns cost
 """Shortest paths and path lengths using the A* ("A star") algorithm.
 """
 from heapq import heappop, heappush

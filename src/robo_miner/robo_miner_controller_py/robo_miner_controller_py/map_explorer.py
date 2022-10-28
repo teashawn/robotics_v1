@@ -8,28 +8,6 @@ from typing import (
     Optional
 )
 from pprint import pprint
-import math
-import sys
-
-# Credits: https://math.stackexchange.com/a/3448361
-def GenSpiral(x, y):
-    for n in range(sys.maxsize):
-        k = math.ceil((math.sqrt(n) - 1) / 2.0)
-        t = 2 * k + 1
-        m = t ** 2
-        t = t - 1
-        if n >= m - t:
-            yield x + k - (m - n), y - k
-        else:
-            m = m - t
-        if n >= m - t:
-            yield x + -k, y -k + (m - n)
-        else:
-            m = m - t
-        if n >= m - t:
-            yield x -k + (m - n), y + k
-        else:
-            yield x + k, y + k - (m - n - t)
 
 """
 direction: move -> new direction
@@ -259,7 +237,6 @@ class MapExplorer:
                 heuristic=MapExplorer.manhattan_distance,
                 weight="weight"
             )
-        
 
     def get_moves(self, steps : List[Tuple[int,int]]) -> List[models.ROBOT_MOVE_TYPE]:
         moves : List[models.ROBOT_MOVE_TYPE] = []
@@ -541,8 +518,6 @@ class MapExplorer:
                     self.UNEXPLORED_TILES += 1
 
     def _update_map(self):
-        map_rows, map_columns = self.MAP.shape
-
         if self.DIRECTION == models.ROBOT_DIRECTION.UP:
             self._handle_direction_up()
         elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
@@ -583,7 +558,7 @@ class MapExplorer:
                     move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
                 )
 
-    def _find_closest_unexplored_tile(self, debug : Optional[bool] = None) -> Optional[models.MapNode]:
+    def _find_closest_unexplored_tile(self, debug : Optional[bool] = None, blacklist : Optional[List[models.MapNode]] = None) -> Optional[models.MapNode]:
         if debug:
             print("Finding closest unexplored tile...")
 
@@ -593,8 +568,8 @@ class MapExplorer:
         explored_queue = set((initial_row, initial_column))
         total_considered = 0
 
-        # check tiles in a concentrically expanding spiral
-        for row, column in GenSpiral(initial_row, initial_column):
+        # check tiles in an eccentrically expanding spiral
+        for row, column in algo.GenSpiral(initial_row, initial_column):
             total_considered += 1
             if debug:
                 print(f"Checking ({row}, {column})")
@@ -606,7 +581,7 @@ class MapExplorer:
             # stop condition
             if abs(row - initial_row) >= max_row and abs(column - initial_column) >= max_column:
                 if debug:
-                    print(f"Breaking for double out of bounds [row_invalid: {row_invalid}, column_invalid: {column_invalid}]")
+                    print(f"Hit stop condition")
                     print(f"row: {row}, column: {column}")
                 break
             
@@ -621,7 +596,13 @@ class MapExplorer:
             if models.TILE_TYPE.is_passable_and_unexplored(val):
                 if debug:
                     print(f"Bingo! [{row}, {column}]. Total considered: {total_considered}")
-                return models.MapNode(row, column)
+
+                result = models.MapNode(row, column)
+
+                if blacklist and result in blacklist:
+                    continue
+                else:
+                    return result
             elif debug:
                 print(f"Not passable and unexplored [passable: {models.TILE_TYPE.is_passable(val)}, unexplored: {models.TILE_TYPE.is_unexplored(val)}]")
         
@@ -629,6 +610,49 @@ class MapExplorer:
             print(f"Bailing out! Total considered: {total_considered}")
         return None
 
+    def _advanced_find_closest_unexplored_tile(self) -> Optional[models.MapNode]:
+        # TODO: maybe set N by game level
+        N = 5
+        results : List[models.MapNode] = []
+
+        # get up to N closest unexplored tiles
+        while (self.UNEXPLORED_TILES > 0 and len(results) < N):
+            x = self._find_closest_unexplored_tile(blacklist=results)
+            if x:
+                results.append(x)
+            else:
+                break
+
+        # calculate their distance in moves
+        costs = {}
+        for i, r in enumerate(results):
+            steps = self.get_path(r)
+            costs[len(self.get_moves(steps))] = i
+
+        # P = 5
+        # costs_p = {}
+        # for i, r in enumerate(results):
+        #     a = models.MapNode(self.ROW, self.COLUMN)
+        #     b = r
+        #     d = self.manhattan_distance(a,b)
+        #     costs_p[d] = i
+
+        # pick the one cheapest in terms of moves
+        return results[costs[min(costs.keys())]] if results else None
+
+    def _get_map_subframe(self, frame_size : models.FrameSize) -> models.MapFrame:
+        map_frame_size = models.FrameSize.init_with_tuple(self.MAP.shape)
+
+        # sanity check
+        if map_frame_size <= frame_size:
+            return models.MapFrame(
+                top_left=models.MapNode(0, 0),
+                top_right=models.MapNode(0, map_frame_size.width-1),
+                bottom_right=models.MapNode(map_frame_size.height-1, map_frame_size.width-1),
+                bottom_left=models.MapNode(map_frame_size.height-1, 0)
+            )
+
+    # TODO: create `move` method combining update + move_client.move
     def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
         if response.success and move_type == models.ROBOT_MOVE_TYPE.FORWARD:
             # we moved to a new tile, as opposed to only changing direction
@@ -647,22 +671,31 @@ class MapExplorer:
             print("\n" + chr(176)*70)
 
         if not self.NAVIGATING:
-            if self._detect_unexplored():
-                # there are unexplored tiles in our immediate neighbours
-                return self._explore_neighbours()
+            # TODO: abstract DFS vs nav only and choose via flag
+            closest_unexplored = self._advanced_find_closest_unexplored_tile()
+            if closest_unexplored:
+                return self.navigate(closest_unexplored)
             else:
-                # find closest unexplored tile
-                closest_unexplored = self._find_closest_unexplored_tile()
-                if closest_unexplored:
-                    # navigate to it
-                    return self.navigate(closest_unexplored)
-                else:
-                    if self.DEBUG and self.UNEXPLORED_TILES > 0:
-                        print("No path!!!\n\n\n\n")
-                        self._find_closest_unexplored_tile(debug=True)
-                        input()
-                    # we have explored the entire map
-                    return self._explore_neighbours()
+                return models.MapUpdateResult(
+                        next_step=models.MapMoveResult.FINISH,
+                        move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
+                    )
+            # if self._detect_unexplored():
+            #     # there are unexplored tiles in our immediate neighbours
+            #     return self._explore_neighbours()
+            # else:
+            #     # find closest unexplored tile
+            #     closest_unexplored = self._advanced_find_closest_unexplored_tile()
+            #     if closest_unexplored:
+            #         # navigate to it
+            #         return self.navigate(closest_unexplored)
+            #     else:
+            #         if self.DEBUG and self.UNEXPLORED_TILES > 0:
+            #             print("No path!!!\n\n\n\n")
+            #             self._find_closest_unexplored_tile(debug=True)
+            #             input()
+            #         # we have explored the entire map
+            #         return self._explore_neighbours()
         else:
             # skip calculations if we are navigating and thus not
             # interested in figuring out our next move

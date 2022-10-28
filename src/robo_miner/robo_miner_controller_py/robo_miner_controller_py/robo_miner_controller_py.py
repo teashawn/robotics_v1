@@ -1,23 +1,21 @@
-from robo_miner_controller_py import service_clients, models, map_explorer
+from robo_miner_controller_py import map_explorer as mp
 import rclpy
-
-"""
-Notes:
-- count number of turns to detect looping
-"""
 
 def main(args=None):
     rclpy.init(args=args)
 
     # State
-    explorer = map_explorer.MapExplorer(debug=True, use_turn_aware_pathfinding=True)
+    explorer = mp.MapExplorer(
+        debug=True,
+        use_turn_aware_pathfinding=True
+    )
 
     # Traverse map
     explorer.reveal_map()
 
-    # Navigate to specific coordinates
-    #destination = models.MapNode(5,6)
-    #explorer.navigate(destination)
+    # Validate map
+
+    # Mine map
 
     # Shut down
     rclpy.shutdown()
