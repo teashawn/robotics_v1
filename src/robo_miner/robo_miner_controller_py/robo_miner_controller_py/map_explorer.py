@@ -203,6 +203,15 @@ class MapExplorer:
 
         return G
 
+    def get_raw_map(self):
+        raw = self.MAP.copy()
+
+        for idx in np.ndindex(raw.shape):
+            if raw[idx] > models.EXPLORED_MARKER:
+                raw[idx] -= models.EXPLORED_MARKER
+
+        return raw
+
     def manhattan_distance(a : models.MapNode, b : models.MapNode) -> float:
         """
         Add cost for turning, detected by change in either X or Y
@@ -612,7 +621,7 @@ class MapExplorer:
 
     def _advanced_find_closest_unexplored_tile(self) -> Optional[models.MapNode]:
         # TODO: maybe set N by game level
-        N = 5
+        N = 3
         results : List[models.MapNode] = []
 
         # get up to N closest unexplored tiles
@@ -705,6 +714,7 @@ class MapExplorer:
     
     def reveal_map(self):
         res = self.init()
+        print("Revealing map...")
 
         while res.next_step != models.MapMoveResult.FINISH:
             if res.next_step == models.MapMoveResult.BACKTRACK:
@@ -739,4 +749,7 @@ class MapExplorer:
 
         return self._explore_neighbours()
 
+    def validate_map(self):
+        resp = self.validate_client.send_request(self.get_raw_map())
+        print(f"Validating map... {'SUCCESS' if resp else 'FAILURE'}")
         

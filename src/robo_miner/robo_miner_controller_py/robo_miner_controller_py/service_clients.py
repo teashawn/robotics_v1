@@ -1,10 +1,10 @@
 from robo_miner_controller_py import models
 from rclpy.node import Node
 import rclpy
-from std_msgs.msg import UInt8MultiArray
+from array import array
 
 from robo_miner_interfaces.srv import QueryInitialRobotPosition, RobotMove, FieldMapValidate
-from robo_miner_interfaces.msg import RobotMoveType
+from robo_miner_interfaces.msg import RobotMoveType, UInt8MultiArray
 
 class QueryInitialRobotPositionClientAsync(Node):
 
@@ -54,16 +54,14 @@ class RobotMoveClientAsync(Node):
 
     def move(self, move_type : models.ROBOT_MOVE_TYPE):
         move_response = self.send_request(move_type)
+        success = move_response.robot_position_response.success
+        if success:
+                self.moves += 1
 
         if self.DEBUG:
-            # Log
-            success = move_response.robot_position_response.success
             error_reason = move_response.robot_position_response.error_reason
             surrounding_tiles = models.SurroundingTiles(*move_response.robot_position_response.surrounding_tiles)
             robot_dir = models.ROBOT_DIRECTION(move_response.robot_position_response.robot_dir)
-
-            if success:
-                self.moves += 1
 
             self.get_logger().info(
                 f"\nSuccess: {success},\nError reason: {error_reason},\nSurrounding tiles: {surrounding_tiles},\nDirection: {robot_dir}\nMoves: {self.moves}"
@@ -80,28 +78,28 @@ class FieldMapValidateClientAsync(Node):
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
 
-    def send_request(self):
-        req = FieldMapValidate.Request(field_map=UInt8MultiArray())
+    def send_request(self, m):
+        req = FieldMapValidate.Request()
+
+        a = UInt8MultiArray()
+        a.rows, a.cols = m.shape
+        a.data = array('B', m.flatten())
+
+        req.field_map = a
         self.future = self.cli.call_async(req)
         rclpy.spin_until_future_complete(self, self.future)
         return self.future.result()
 
-    def validate(self, ):
-        move_response = self.send_request()#move_type
+    def validate(self, m):
+        resp = self.send_request(m)
+        success = resp.field_map_validate_response.success
 
         if self.DEBUG:
-            # Log
-            # success = move_response.robot_position_response.success
-            # error_reason = move_response.robot_position_response.error_reason
-            # surrounding_tiles = models.SurroundingTiles(*move_response.robot_position_response.surrounding_tiles)
-            # robot_dir = models.ROBOT_DIRECTION(move_response.robot_position_response.robot_dir)
+            success = resp.field_map_validate_response.success
+            error_reason = resp.field_map_validate_response.error_reason
 
-            # if success:
-            #     self.moves += 1
+            self.get_logger().info(
+                f"\nSuccess: {success},\nError reason: {error_reason}"
+            )
 
-            # self.get_logger().info(
-            #     f"\nSuccess: {success},\nError reason: {error_reason},\nSurrounding tiles: {surrounding_tiles},\nDirection: {robot_dir}\nMoves: {self.moves}"
-            # )
-
-        #return move_response.robot_position_response
-            pass
+        return success

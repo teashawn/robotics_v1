@@ -6,7 +6,7 @@ def main(args=None):
 
     # State
     explorer = mp.MapExplorer(
-        debug=True,
+        debug=False,
         use_turn_aware_pathfinding=True
     )
 
@@ -14,6 +14,7 @@ def main(args=None):
     explorer.reveal_map()
 
     # Validate map
+    explorer.validate_map()
 
     # Mine map
 
