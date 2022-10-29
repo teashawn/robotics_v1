@@ -681,30 +681,30 @@ class MapExplorer:
 
         if not self.NAVIGATING:
             # TODO: abstract DFS vs nav only and choose via flag
-            closest_unexplored = self._advanced_find_closest_unexplored_tile()
-            if closest_unexplored:
-                return self.navigate(closest_unexplored)
-            else:
-                return models.MapUpdateResult(
-                        next_step=models.MapMoveResult.FINISH,
-                        move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
-                    )
-            # if self._detect_unexplored():
-            #     # there are unexplored tiles in our immediate neighbours
-            #     return self._explore_neighbours()
+            # closest_unexplored = self._advanced_find_closest_unexplored_tile()
+            # if closest_unexplored:
+            #     return self.navigate(closest_unexplored)
             # else:
-            #     # find closest unexplored tile
-            #     closest_unexplored = self._advanced_find_closest_unexplored_tile()
-            #     if closest_unexplored:
-            #         # navigate to it
-            #         return self.navigate(closest_unexplored)
-            #     else:
-            #         if self.DEBUG and self.UNEXPLORED_TILES > 0:
-            #             print("No path!!!\n\n\n\n")
-            #             self._find_closest_unexplored_tile(debug=True)
-            #             input()
-            #         # we have explored the entire map
-            #         return self._explore_neighbours()
+            #     return models.MapUpdateResult(
+            #             next_step=models.MapMoveResult.FINISH,
+            #             move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
+            #         )
+            if self._detect_unexplored():
+                # there are unexplored tiles in our immediate neighbours
+                return self._explore_neighbours()
+            else:
+                # find closest unexplored tile
+                closest_unexplored = self._advanced_find_closest_unexplored_tile()
+                if closest_unexplored:
+                    # navigate to it
+                    return self.navigate(closest_unexplored)
+                else:
+                    if self.DEBUG and self.UNEXPLORED_TILES > 0:
+                        print("No path!!!\n\n\n\n")
+                        self._find_closest_unexplored_tile(debug=True)
+                        input()
+                    # we have explored the entire map
+                    return self._explore_neighbours()
         else:
             # skip calculations if we are navigating and thus not
             # interested in figuring out our next move
