@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>robo_miner_controller_py</name>
+  <name>robo_miner_controller</name>
   <version>0.0.0</version>
-  <description>robo_miner_controller_py</description>
+  <description>robo_miner_controller</description>
   <maintainer email="tisho@taxime.to">tisho</maintainer>
   <license>Apache License 2.0</license>
 

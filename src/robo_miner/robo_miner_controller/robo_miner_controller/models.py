@@ -113,21 +113,3 @@ class MapNode:
     @property
     def column(self):
         return self._column
-
-    def __init__(
-        self,
-        top_left : MapNode,
-        top_right : MapNode,
-        bottom_right : MapNode,
-        bottom_left : MapNode
-    ):
-        self.top_left = top_left
-        self.top_right = top_right
-        self.bottom_left = bottom_left
-        self.bottom_right = bottom_right
-
-    def contains(self, node : MapNode) -> bool:
-        return node.row <= self.top_left.row and \
-            node.row >= self.bottom_left.row and \
-            node.column >= self.top_left.column and \
-            node.column <= self.top_right.column

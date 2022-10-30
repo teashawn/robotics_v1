@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'robo_miner_controller_py'
+package_name = 'robo_miner_controller'
 
 setup(
     name=package_name,
@@ -15,12 +15,12 @@ setup(
     zip_safe=True,
     maintainer='tisho',
     maintainer_email='tisho@taxime.to',
-    description='robo_miner_controller_py',
+    description='robo_miner_controller',
     license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'robo_miner_controller_py = robo_miner_controller_py.robo_miner_controller_py:main'
+            'robo_miner_controller = robo_miner_controller.robo_miner_controller:main'
         ],
     },
 )

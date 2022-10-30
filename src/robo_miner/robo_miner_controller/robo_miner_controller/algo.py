@@ -1,4 +1,4 @@
-from robo_miner_controller_py import models
+from robo_miner_controller import models
 import math
 import sys
 

@@ -1,4 +1,4 @@
-from robo_miner_controller_py import map_explorer as mp
+from robo_miner_controller import map_explorer as mp
 import rclpy
 
 def main(args=None):

@@ -1,4 +1,4 @@
-from robo_miner_controller_py import models, service_clients, algo
+from robo_miner_controller import models, service_clients, algo
 import numpy as np
 import networkx as nx
 from typing import (
