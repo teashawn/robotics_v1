@@ -841,11 +841,22 @@ class MapExplorer:
         print(f"Validating longest sequence... {'SUCCESS' if resp else 'FAILURE'}")
 
     def mine_longest_sequence(self):
-        self.navigate(self.LONGEST_SEQUENCE[0])
+        # Find closest tile from longest sequence
+        closest_tile = None
+        closest_tile_distance = 1000
+
+        for t in self.LONGEST_SEQUENCE:
+            steps = self.get_path(t)
+            moves = self.get_moves(steps)
+            if len(moves) < closest_tile_distance:
+                closest_tile = t
+                closest_tile_distance = len(moves)
+
+        self.navigate(closest_tile)
         self.activate_mining_client.activate()
         self.MINING = True
         print("Starting mining...")
-        for n in self.LONGEST_SEQUENCE[1:]:
+        for n in nx.dfs_preorder_nodes(self._get_nav_graph(), source=closest_tile):
             self.navigate(n)
         self.MINING = False
         print("Finished mining.")
