@@ -114,33 +114,6 @@ class MapNode:
     def column(self):
         return self._column
 
-class FrameSize():
-    def __init__(self, width : int, height : int):
-        self.width = width
-        self.height = height
-
-    def init_with_tuple(t : Tuple[int,int]):
-        return FrameSize(t[0], t[1])
-
-    def __eq__(self, other):
-        return self.width == other.width and self.height == other.height
-
-    def __ne__(self, other):
-        return not (self.width == other.width and self.height == other.height)
-
-    def __lte__(self, other):
-        return self.width <= other.width and self.height <= other.width
-
-    def __lt__(self, other):
-        return self.width < other.width and self.height < other.width
-
-    def __gte__(self, other):
-        return self.width >= other.width and self.height >= other.width
-
-    def __gt__(self, other):
-        return self.width > other.width and self.height > other.width
-
-class MapFrame():
     def __init__(
         self,
         top_left : MapNode,

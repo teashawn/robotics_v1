@@ -731,18 +731,6 @@ class MapExplorer:
         # pick the one cheapest in terms of moves
         return results[costs[min(costs.keys())]] if results else None
 
-    def _get_map_subframe(self, frame_size : models.FrameSize) -> models.MapFrame:
-        map_frame_size = models.FrameSize.init_with_tuple(self.MAP.shape)
-
-        # sanity check
-        if map_frame_size <= frame_size:
-            return models.MapFrame(
-                top_left=models.MapNode(0, 0),
-                top_right=models.MapNode(0, map_frame_size.width-1),
-                bottom_right=models.MapNode(map_frame_size.height-1, map_frame_size.width-1),
-                bottom_left=models.MapNode(map_frame_size.height-1, 0)
-            )
-
     def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
         if response.success and move_type == models.ROBOT_MOVE_TYPE.FORWARD:
             # we moved to a new tile, as opposed to only changing direction
