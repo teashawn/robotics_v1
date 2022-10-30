@@ -740,7 +740,6 @@ class MapExplorer:
                 bottom_left=models.MapNode(map_frame_size.height-1, 0)
             )
 
-    # TODO: create `move` method combining update + move_client.move
     def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
         if response.success and move_type == models.ROBOT_MOVE_TYPE.FORWARD:
             # we moved to a new tile, as opposed to only changing direction
@@ -787,6 +786,15 @@ class MapExplorer:
                 next_step=models.MapMoveResult.CONTINUE,
                 move_type=models.ROBOT_MOVE_TYPE.UNKNOWN)
     
+    def move(self, move_type : models.ROBOT_MOVE_TYPE) -> models.MapUpdateResult:
+        move_response = self.move_client.move(move_type)
+        return self.update(move_type, move_response)
+
+    def turn_around(self) -> models.MapUpdateResult:
+        move_type = models.ROBOT_MOVE_TYPE.ROTATE_RIGHT
+        res = self.move(move_type)
+        return self.move(move_type)
+
     def authenticate(self, user : str, repo : str, commit : str):
         self.authenticator.authenticate(user, repo, commit)
         print("Authentication complete")
@@ -797,14 +805,9 @@ class MapExplorer:
 
         while res.next_step != models.MapMoveResult.FINISH:
             if res.next_step == models.MapMoveResult.BACKTRACK:
-                # Turn around
-                move_response = self.move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
-                res = self.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
-                move_response = self.move_client.move(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
-                res = self.update(models.ROBOT_MOVE_TYPE.ROTATE_RIGHT, move_response)
+                res = self.turn_around()
             else:
-                move_response = self.move_client.move(res.move_type)
-                res = self.update(res.move_type, move_response)
+                res = self.move(res.move_type)
 
         print(f"Revealed map in {self.move_client.moves} moves.")
 
