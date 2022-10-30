@@ -133,6 +133,7 @@ class MapExplorer:
         self.validate_client = service_clients.FieldMapValidateClientAsync(debug)
         self.longest_sequence_validate_client = service_clients.LongestSequenceValidateClientAsync(debug)
         self.activate_mining_client = service_clients.ActivateMiningClientAsync(debug)
+        self.authenticator = service_clients.Authenticator()
     
     def __del__(self):
         self.initial_position_client.destroy_node()
@@ -785,6 +786,10 @@ class MapExplorer:
             return models.MapUpdateResult(
                 next_step=models.MapMoveResult.CONTINUE,
                 move_type=models.ROBOT_MOVE_TYPE.UNKNOWN)
+    
+    def authenticate(self, user : str, repo : str, commit : str):
+        self.authenticator.authenticate(user, repo, commit)
+        print("Authentication complete")
     
     def reveal_map(self):
         res = self.init()

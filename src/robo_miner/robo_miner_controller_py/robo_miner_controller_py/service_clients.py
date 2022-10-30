@@ -1,11 +1,31 @@
 from robo_miner_controller_py import models
 from rclpy.node import Node
+from rclpy.qos import QoSProfile
 import rclpy
 from array import array
 
 from robo_miner_interfaces.srv import QueryInitialRobotPosition, RobotMove, FieldMapValidate, LongestSequenceValidate, ActivateMiningValidate
-from robo_miner_interfaces.msg import RobotMoveType, UInt8MultiArray, FieldPoint
-from std_msgs.msg import Empty
+from robo_miner_interfaces.msg import RobotMoveType, UInt8MultiArray, FieldPoint, UserAuthenticate
+
+class Authenticator(Node):
+    def __init__(self):
+        super().__init__('auth_publisher')
+        qos = QoSProfile(
+            reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
+            durability=rclpy.qos.DurabilityPolicy.VOLATILE,
+            history=rclpy.qos.HistoryPolicy.SYSTEM_DEFAULT,
+            depth=10
+        )
+
+        self.publisher = self.create_publisher(UserAuthenticate, 'user_authenticate', qos)
+
+    def authenticate(self, user : str, repo : str, commit : str):
+        self.publisher.publish(UserAuthenticate(
+            user=user,
+            repository=repo,
+            commit_sha=commit
+        ))
+        
 
 class QueryInitialRobotPositionClientAsync(Node):
 

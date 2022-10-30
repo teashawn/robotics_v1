@@ -10,6 +10,13 @@ def main(args=None):
         use_turn_aware_pathfinding=True
     )
 
+    # Authenticate
+    explorer.authenticate(
+        "tisho@taxime.to",
+        "https://github.com/teashawn/robotics_v1",
+        "6557d62cd96857dcff990b121370bb5a0636b88c"
+    )
+
     # Traverse map
     explorer.reveal_map()
 
