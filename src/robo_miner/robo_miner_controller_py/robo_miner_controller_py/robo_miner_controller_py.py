@@ -19,7 +19,8 @@ def main(args=None):
     # Validate longest sequence
     explorer.validate_longest_sequence()
 
-    # Mine map
+    # Mine longest sequence
+    explorer.mine_longest_sequence()
 
     # Shut down
     rclpy.shutdown()

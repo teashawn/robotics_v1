@@ -152,13 +152,13 @@ class ActivateMiningClientAsync(Node):
         rclpy.spin_until_future_complete(self, self.future)
         return self.future.result()
 
-    def validate(self):
+    def activate(self):
         resp = self.send_request()
-        success = resp.activate_mining_validate.success
+        success = resp.success
 
         if self.DEBUG:
-            success = resp.activate_mining_validate.success
-            error_reason = resp.activate_mining_validate.error_reason
+            success = resp.success
+            error_reason = resp.error_reason
 
             self.get_logger().info(
                 f"\nSuccess: {success},\nError reason: {error_reason}"

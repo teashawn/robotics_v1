@@ -115,8 +115,6 @@ REORIENTATION_MAP = {
 
 class MapExplorer:
     def __init__(self, debug : bool, use_turn_aware_pathfinding: bool):
-        # TODO: remove?
-        self.INITIAL_TILE : models.TILE_TYPE = None
         self.DIRECTION : models.ROBOT_DIRECTION = None
         self.SURROUNDING_TILES : models.SurroundingTiles = None
         self.ROW = 0
@@ -126,12 +124,15 @@ class MapExplorer:
         self.UNEXPLORED_TILES = 0
         self.DEBUG = debug
         self.NAVIGATING = False
+        self.MINING = False
         self.TURN_AWARE = use_turn_aware_pathfinding
+        self.LONGEST_SEQUENCE = None
 
         self.initial_position_client = service_clients.QueryInitialRobotPositionClientAsync(debug)
         self.move_client = service_clients.RobotMoveClientAsync(debug)
         self.validate_client = service_clients.FieldMapValidateClientAsync(debug)
         self.longest_sequence_validate_client = service_clients.LongestSequenceValidateClientAsync(debug)
+        self.activate_mining_client = service_clients.ActivateMiningClientAsync(debug)
     
     def __del__(self):
         self.initial_position_client.destroy_node()
@@ -147,8 +148,8 @@ class MapExplorer:
 
     def init(self) -> models.MapUpdateResult:
         response = self.initial_position_client.query()
-        self.INITIAL_TILE = models.TILE_TYPE(response.robot_initial_tile)
-        self.MAP[0,0] = self.INITIAL_TILE.value + models.EXPLORED_MARKER
+        initial_tile= models.TILE_TYPE(response.robot_initial_tile)
+        self.MAP[0,0] = initial_tile.value + models.EXPLORED_MARKER
 
         return self.update(models.ROBOT_MOVE_TYPE.UNKNOWN, response.robot_position_response)
 
@@ -157,34 +158,52 @@ class MapExplorer:
 
         map_rows, map_columns = self.MAP.shape
 
+        is_tile_valid = models.TILE_TYPE.is_passable
+        if self.MINING:
+            t = self._get_mining_target_tile()
+            def is_valid(tt):
+                return tt == t
+            is_tile_valid = is_valid
+
         # top
         if row-1 > 0:
             tile = self.MAP[row-1, column]
-            if models.TILE_TYPE.is_passable(tile):
+            if is_tile_valid(tile):
                 neighbours.append(models.MapNode(row-1, column))
 
         # right
         if column+1 < map_columns:
             tile = self.MAP[row, column+1]
-            if models.TILE_TYPE.is_passable(tile):
+            if is_tile_valid(tile):
                 neighbours.append(models.MapNode(row, column+1))
 
         # bottom
         if row+1 < map_rows:
             tile = self.MAP[row+1, column]
-            if models.TILE_TYPE.is_passable(tile):
+            if is_tile_valid(tile):
                 neighbours.append(models.MapNode(row+1, column))
 
         # left
         if column-1 > 0:
             tile = self.MAP[row, column-1]
-            if models.TILE_TYPE.is_passable(tile):
+            if is_tile_valid(tile):
                 neighbours.append(models.MapNode(row, column-1))
 
         return neighbours
 
+    def _get_mining_target_tile(self):
+        t = self.LONGEST_SEQUENCE[0]
+        return self.MAP[t.row, t.column]
+
     def _get_nav_graph(self):
         G = nx.Graph()
+
+        is_tile_valid = models.TILE_TYPE.is_passable
+        if self.MINING:
+            t = self._get_mining_target_tile()
+            def is_valid(tt):
+                return tt == t
+            is_tile_valid = is_valid
 
         edges : Dict[models.MapNode, List[models.MapNode]] = {}
 
@@ -193,7 +212,7 @@ class MapExplorer:
         while not it.finished:
             row, column = it.multi_index
             tile = self.MAP[row, column]
-            if models.TILE_TYPE.is_passable(tile):
+            if is_tile_valid(tile):
                 node = models.MapNode(row, column)
                 G.add_node(node)
                 edges[node] = self._get_node_neighbours(row, column)
@@ -267,6 +286,7 @@ class MapExplorer:
 
             node = models.MapNode(idx[0], idx[1])
             candidate = [node]
+            explored.add(node)
 
             for c in MapExplorer._trace_sequence(node, explored, raw_map):
                 explored.add(c)
@@ -294,6 +314,7 @@ class MapExplorer:
 
     def get_path(self, destination : models.MapNode):
         self.GRAPH = self._get_nav_graph()
+
         origin = models.MapNode(self.ROW, self.COLUMN)
         if self.TURN_AWARE:
             return algo.astar_path(
@@ -807,6 +828,17 @@ class MapExplorer:
         print(f"Validating map... {'SUCCESS' if resp else 'FAILURE'}")
 
     def validate_longest_sequence(self):
-        resp = self.longest_sequence_validate_client.validate(self.get_longest_sequence())
+        self.LONGEST_SEQUENCE = self.get_longest_sequence()
+        resp = self.longest_sequence_validate_client.validate(self.LONGEST_SEQUENCE)
         print(f"Validating longest sequence... {'SUCCESS' if resp else 'FAILURE'}")
+
+    def mine_longest_sequence(self):
+        self.navigate(self.LONGEST_SEQUENCE[0])
+        self.activate_mining_client.activate()
+        self.MINING = True
+        print("Starting mining...")
+        for n in self.LONGEST_SEQUENCE[1:]:
+            self.navigate(n)
+        self.MINING = False
+        print("Finished mining.")
         
