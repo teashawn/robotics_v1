@@ -42,8 +42,6 @@ class TILE_TYPE(IntEnum):
         return val < EXPLORED_MARKER
 
     def is_passable_and_unexplored(val):
-        # if TRIGGER:
-        #     print(f"val: {val}, passable: {TILE_TYPE.is_passable(val)}, unexplored: {TILE_TYPE.is_unexplored(val)}, both: {TILE_TYPE.is_passable(val) and TILE_TYPE.is_unexplored(val)}")
         return  TILE_TYPE.is_passable(val) and TILE_TYPE.is_unexplored(val)
 
     def is_passable(val):

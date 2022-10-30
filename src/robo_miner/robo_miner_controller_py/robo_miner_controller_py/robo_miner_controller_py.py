@@ -16,6 +16,9 @@ def main(args=None):
     # Validate map
     explorer.validate_map()
 
+    # Validate longest sequence
+    explorer.validate_longest_sequence()
+
     # Mine map
 
     # Shut down

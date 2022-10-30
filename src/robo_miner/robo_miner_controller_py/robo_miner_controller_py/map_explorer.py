@@ -4,6 +4,7 @@ import networkx as nx
 from typing import (
     List,
     Dict,
+    Set,
     Tuple,
     Optional
 )
@@ -126,9 +127,11 @@ class MapExplorer:
         self.DEBUG = debug
         self.NAVIGATING = False
         self.TURN_AWARE = use_turn_aware_pathfinding
+
         self.initial_position_client = service_clients.QueryInitialRobotPositionClientAsync(debug)
         self.move_client = service_clients.RobotMoveClientAsync(debug)
         self.validate_client = service_clients.FieldMapValidateClientAsync(debug)
+        self.longest_sequence_validate_client = service_clients.LongestSequenceValidateClientAsync(debug)
     
     def __del__(self):
         self.initial_position_client.destroy_node()
@@ -203,7 +206,7 @@ class MapExplorer:
 
         return G
 
-    def get_raw_map(self):
+    def get_raw_map(self) -> np.ndarray:
         raw = self.MAP.copy()
 
         for idx in np.ndindex(raw.shape):
@@ -211,6 +214,69 @@ class MapExplorer:
                 raw[idx] -= models.EXPLORED_MARKER
 
         return raw
+
+    def _trace_sequence(node : models.MapNode, explored : Set[models.MapNode], map : np.ndarray) -> List[models.MapNode]:
+        result = []
+
+        row = node.row
+        col = node.column
+        marker = map[row,col]
+
+        max_row, max_col = map.shape
+
+        if row-1 >= 0:
+            n = models.MapNode(row-1, col)
+            val = map[n.row, n.column]
+            if val == marker and n not in explored:
+                result.append(n)
+                explored.add(n)
+        if row+1 < max_row:
+            n = models.MapNode(row+1,col)
+            val = map[n.row, n.column]
+            if val == marker and n not in explored:
+                result.append(n)
+                explored.add(n)
+        if col-1 >= 0:
+            n = models.MapNode(row, col-1)
+            val = map[n.row, n.column]
+            if val == marker and n not in explored:
+                result.append(n)
+                explored.add(n)
+        if col+1 < max_col:
+            n = models.MapNode(row,col+1)
+            val = map[n.row, n.column]
+            if val == marker and n not in explored:
+                result.append(n)
+                explored.add(n)
+
+        children = []
+        for n in result:
+            children += MapExplorer._trace_sequence(n, explored, map)
+
+        return result + children
+
+    def get_longest_sequence(self) -> List[models.MapNode]:
+        raw_map = self.get_raw_map()
+        explored = set()
+        longest_sequence = []
+        longest_sequence_size = 0
+
+        for idx in np.ndindex(raw_map.shape):
+            if not models.TILE_TYPE.is_passable(raw_map[idx]):
+                continue
+
+            node = models.MapNode(idx[0], idx[1])
+            candidate = [node]
+
+            for c in MapExplorer._trace_sequence(node, explored, raw_map):
+                explored.add(c)
+                candidate.append(c)
+
+            if len(candidate) > longest_sequence_size:
+                longest_sequence = candidate
+                longest_sequence_size = len(candidate)
+
+        return longest_sequence
 
     def manhattan_distance(a : models.MapNode, b : models.MapNode) -> float:
         """
@@ -620,7 +686,6 @@ class MapExplorer:
         return None
 
     def _advanced_find_closest_unexplored_tile(self) -> Optional[models.MapNode]:
-        # TODO: maybe set N by game level
         N = 3
         results : List[models.MapNode] = []
 
@@ -637,14 +702,6 @@ class MapExplorer:
         for i, r in enumerate(results):
             steps = self.get_path(r)
             costs[len(self.get_moves(steps))] = i
-
-        # P = 5
-        # costs_p = {}
-        # for i, r in enumerate(results):
-        #     a = models.MapNode(self.ROW, self.COLUMN)
-        #     b = r
-        #     d = self.manhattan_distance(a,b)
-        #     costs_p[d] = i
 
         # pick the one cheapest in terms of moves
         return results[costs[min(costs.keys())]] if results else None
@@ -699,10 +756,6 @@ class MapExplorer:
                     # navigate to it
                     return self.navigate(closest_unexplored)
                 else:
-                    if self.DEBUG and self.UNEXPLORED_TILES > 0:
-                        print("No path!!!\n\n\n\n")
-                        self._find_closest_unexplored_tile(debug=True)
-                        input()
                     # we have explored the entire map
                     return self._explore_neighbours()
         else:
@@ -750,6 +803,10 @@ class MapExplorer:
         return self._explore_neighbours()
 
     def validate_map(self):
-        resp = self.validate_client.send_request(self.get_raw_map())
+        resp = self.validate_client.validate(self.get_raw_map())
         print(f"Validating map... {'SUCCESS' if resp else 'FAILURE'}")
+
+    def validate_longest_sequence(self):
+        resp = self.longest_sequence_validate_client.validate(self.get_longest_sequence())
+        print(f"Validating longest sequence... {'SUCCESS' if resp else 'FAILURE'}")
         
