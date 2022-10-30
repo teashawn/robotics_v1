@@ -139,6 +139,9 @@ class MapExplorer:
         self.initial_position_client.destroy_node()
         self.move_client.destroy_node()
         self.validate_client.destroy_node()
+        self.longest_sequence_validate_client.destroy_node()
+        self.activate_mining_client.destroy_node()
+        self.authenticator.destroy_node()
 
     def print_state(self):
         print("####################################")
