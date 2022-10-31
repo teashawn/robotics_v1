@@ -14,7 +14,7 @@ def main(args=None):
     explorer.authenticate(
         "tisho@taxime.to",
         "https://github.com/teashawn/robotics_v1",
-        "6557d62cd96857dcff990b121370bb5a0636b88c"
+        "ba30b5cafbf2e74fe84b136cfb56f5e5ababb6fc"
     )
 
     # Traverse map
