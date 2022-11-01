@@ -21,8 +21,6 @@ def main(args=None):
     explorer.update_battery_status()
     explorer.move_test()
 
-    #rclpy.spin(explorer)
-
     # # Traverse map
     # explorer.reveal_map()
 

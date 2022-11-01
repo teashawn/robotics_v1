@@ -124,6 +124,7 @@ class MapExplorer:
         self.MAP = np.zeros((1,1), dtype=int)
         self.GRAPH = nx.Graph()
         self.UNEXPLORED_TILES = 0
+        self.MOVES = 0
         self.DEBUG = debug
         self.NAVIGATING = False
         self.MINING = False
@@ -134,6 +135,7 @@ class MapExplorer:
         self.authenticator = service_clients.Authenticator()
         self.battery_status_client = service_clients.BatteryStatusClientAsync(debug)
         self.charge_battery_client = service_clients.ChargeBatteryClientAsync(debug)
+        self.move_counter_listener = service_clients.RobotMoveCounterSubscriber(debug, self._move_counter_updated)
         self.robot_move_client = service_clients.RobotMoveActionClient(
             debug=debug,
             cb_ack = self._move_acknowledged,
@@ -149,6 +151,10 @@ class MapExplorer:
         # https://github.com/ros2/examples/pull/246/files
         #self.robot_move_client.destroy_node()
 
+    def _move_counter_updated(self, counter):
+        print(f"Counter: {counter}")
+        self.MOVES = counter
+
     def _move_acknowledged(self, accepted):
         if not accepted:
             # handle rejection
@@ -159,10 +165,10 @@ class MapExplorer:
 
     def _move_feedback(self, msg):
         approaching_field_marker = msg.feedback.approaching_field_marker
-        progress_percent = msg.feedback.progress_percent
-        print(f'Received feedback: {progress_percent}% {approaching_field_marker}')
-        # TODO: cancel if approaching marker is unpassable!
+        #progress_percent = msg.feedback.progress_percent
+        #print(f'Received feedback: {progress_percent}% {approaching_field_marker}')
         if approaching_field_marker > 0 and not models.TILE_TYPE.is_passable(approaching_field_marker):
+            # TODO: store value of field ahead
             self.robot_move_client.cancel_move()
             print("Cancelled move")
 
@@ -173,7 +179,7 @@ class MapExplorer:
     def print_state(self):
         print("####################################")
         print(f"# Map Explorer State:")
-        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}, Navigating: {self.NAVIGATING}")
+        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}")
         pprint(self.MAP)
         print("####################################")
 
@@ -803,12 +809,19 @@ class MapExplorer:
 
     def move_test(self):
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.print_state()
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.print_state()
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.ROTATE_RIGHT))
+        self.print_state()
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.print_state()
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.ROTATE_LEFT))
+        self.print_state()
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.print_state()
         self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.print_state()
 
     def turn_around(self) -> models.MapUpdateResult:
         move_type = models.ROBOT_MOVE_TYPE.ROTATE_RIGHT

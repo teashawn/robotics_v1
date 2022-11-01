@@ -4,7 +4,7 @@ from rclpy.qos import QoSProfile
 from rclpy.action import ActionClient
 import rclpy
 from typing import Callable
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, Int32
 
 from robo_cleaner_interfaces.action import RobotMove
 from robo_cleaner_interfaces.srv import QueryInitialRobotState, ChargeBattery, QueryBatteryStatus
@@ -76,6 +76,16 @@ class FieldMapRevealedSubscriber(Node):
             cb,
             qos)
 
+class RobotMoveCounterSubscriber(Node):
+    def __init__(self,debug : bool, cb):
+        super().__init__('robo_move_counter_subscriber')
+
+        self.subscription = self.create_subscription(
+            Int32,
+            'robot_move_counter',
+            cb,
+            10)
+
 class BatteryStatusClientAsync(Node):
 
     def __init__(self, debug : bool):
@@ -135,10 +145,6 @@ class ChargeBatteryClientAsync(Node):
 
 class RobotMoveActionClient(Node):
     def __init__(self, debug : bool, cb_ack : Callable, cb_completed : Callable, cb_feedback : Callable):
-        """
-        If we need parallel execution from the client, we'll need to pass the callbacks for each
-        goal, as well as a goal ID!
-        """
         super().__init__('robot_move_action_client')
         self.DEBUG = debug
         self._action_client = ActionClient(self, RobotMove, 'move_robot')
@@ -171,7 +177,7 @@ class RobotMoveActionClient(Node):
         self.cb_completed(result)
 
     def _cancel_done(self, future):
-        print("Cancel done")
+        pass
 
     def move(self, move_type : RobotMoveType):
         _send_goal_future = self._send_goal(move_type)
