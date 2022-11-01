@@ -1,3 +1,4 @@
+from logging import error
 from robo_cleaner_controller import models, service_clients, algo
 from robo_cleaner_interfaces.msg import RobotMoveType
 import numpy as np
@@ -11,6 +12,7 @@ from typing import (
 )
 from pprint import pprint
 import rclpy
+import os
 
 """
 direction: move -> new direction
@@ -118,18 +120,20 @@ REORIENTATION_MAP = {
 class MapExplorer:
     def __init__(self, debug : bool, use_turn_aware_pathfinding: bool):
         self.DIRECTION : models.ROBOT_DIRECTION = None
-        self.SURROUNDING_TILES : models.SurroundingTiles = None
-        self.ROW = 0
-        self.COLUMN = 0
-        self.MAP = np.zeros((1,1), dtype=int)
+        self.ROW = 1
+        self.COLUMN = 1
+        self.MAP = np.zeros((3,3), dtype=int)
         self.GRAPH = nx.Graph()
-        self.UNEXPLORED_TILES = 0
+        self.UNEXPLORED_TILES = 8
+        self.CHARGER_LOCATION = models.Coordinates(1,1)
         self.MOVES = 0
         self.DEBUG = debug
         self.NAVIGATING = False
-        self.MINING = False
         self.TURN_AWARE = use_turn_aware_pathfinding
         self.BATTERY = models.Battery()
+
+        self.cancelled_moves = []
+        self.LAST_MOVE_TYPE = None
 
         self.initial_state_client = service_clients.QueryInitialRobotStateClientAsync(debug)
         self.authenticator = service_clients.Authenticator()
@@ -143,54 +147,108 @@ class MapExplorer:
             cb_feedback = self._move_feedback
         )
 
+        if self.DEBUG:
+            print("__init__")
+            self.print_state()
+
     def __del__(self):
         self.initial_state_client.destroy_node()
         self.authenticator.destroy_node()
         self.battery_status_client.destroy_node()
         self.charge_battery_client.destroy_node()
-        # https://github.com/ros2/examples/pull/246/files
-        #self.robot_move_client.destroy_node()
+        self.move_counter_listener.destroy_node()
 
-    def _move_counter_updated(self, counter):
-        print(f"Counter: {counter}")
-        self.MOVES = counter
+    def _move_counter_updated(self, msg):
+        """
+        For some reason the subscriber is not receiving data. To be debugged later.
+        For now working around this by keeping our own counter.
+        """
+        #self.MOVES = msg.data
+        pass
 
-    def _move_acknowledged(self, accepted):
-        if not accepted:
-            # handle rejection
-            print("Goal rejected")
+    def _move_acknowledged(self, goal_handle):
+        if not goal_handle.accepted:
+            # TODO: handle rejection
+            if self.DEBUG:
+                print("Goal rejected")
             return
-        else:
-            print("Goal accepted")
+        # TODO: remove if moves counter subscriber starts receiving data
+        self.MOVES += 1
 
     def _move_feedback(self, msg):
+        if msg.goal_id in self.cancelled_moves:
+            return
+
         approaching_field_marker = msg.feedback.approaching_field_marker
         #progress_percent = msg.feedback.progress_percent
         #print(f'Received feedback: {progress_percent}% {approaching_field_marker}')
+
         if approaching_field_marker > 0 and not models.TILE_TYPE.is_passable(approaching_field_marker):
-            # TODO: store value of field ahead
+            tile_ahead = self._get_coordinates_of_tile_ahead()
+            self.MAP[tile_ahead.row, tile_ahead.column] = approaching_field_marker
+            self.UNEXPLORED_TILES -= 1
+
+            if self.DEBUG:
+                print(f"Cancelling move, because tile ahead is {models.TILE_TYPE(approaching_field_marker)}")
+
+            self.cancelled_moves.append(msg.goal_id)
             self.robot_move_client.cancel_move()
-            print("Cancelled move")
+            if self.DEBUG:
+                print("_move_feedback cancel")
 
     def _move_completed(self, result):
-        print(f"Result: {result.processed_field_marker}")
-        # TODO: store field marker
+        if result.processed_field_marker == 0:
+            # goal was cancelled
+            return
+
+        if self.LAST_MOVE_TYPE == RobotMoveType.FORWARD:
+            self._update_position()
+            self.MAP[self.ROW, self.COLUMN] = result.processed_field_marker
+            self.UNEXPLORED_TILES -= 1
+            self._update_map()
+            if self.DEBUG:
+                print(f"Entered tile: {models.TILE_TYPE(result.processed_field_marker)}")
+        
+        self.DIRECTION = ROTATION_MAP[self.DIRECTION][self.LAST_MOVE_TYPE]
+        self.update_battery_status()
+        if self.DEBUG:
+            print("_move_completed")
+            self.print_state()
+        
 
     def print_state(self):
         print("####################################")
         print(f"# Map Explorer State:")
-        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}")
+        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Direction: {self.DIRECTION}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}")
         pprint(self.MAP)
         print("####################################")
 
-    def init(self) -> models.MapUpdateResult:
+    def init(self): #  -> models.MapUpdateResult
         response = self.initial_state_client.query()
         initial_tile= models.TILE_TYPE(response.initial_robot_state.robot_tile)
-        self.MAP[0,0] = initial_tile.value + models.EXPLORED_MARKER
+        self.DIRECTION = models.ROBOT_DIRECTION(response.initial_robot_state.robot_dir)
+        self.MAP[1,1] = initial_tile.value
+        if models.TILE_TYPE(initial_tile.value) == models.TILE_TYPE.CHARGER:
+            self.CHARGER_LOCATION = models.MapNode(1,1)
         battery_status = response.initial_robot_state.battery_status
         self.BATTERY.update(battery_status)
 
-        return self.update(models.ROBOT_MOVE_TYPE.UNKNOWN, response.initial_robot_state)
+        if self.DEBUG:
+            print("init")
+            self.print_state()
+        #return self.update(models.ROBOT_MOVE_TYPE.UNKNOWN, response.initial_robot_state)
+
+    def _get_coordinates_of_tile_ahead(self) -> models.MapNode:
+        if self.DIRECTION == models.ROBOT_DIRECTION.UP:
+            return models.MapNode(self.ROW-1, self.COLUMN)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
+            return models.MapNode(self.ROW, self.COLUMN+1)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
+            return models.MapNode(self.ROW+1, self.COLUMN)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
+            return models.MapNode(self.ROW, self.COLUMN-1)
+        else:
+            raise Exception(f"Invalid robot direction: {self.DIRECTION}")
 
     def _get_node_neighbours(self, row, column) -> List[models.MapNode]:
         neighbours : List[models.MapNode] = []
@@ -198,11 +256,6 @@ class MapExplorer:
         map_rows, map_columns = self.MAP.shape
 
         is_tile_valid = models.TILE_TYPE.is_passable
-        if self.MINING:
-            t = self._get_mining_target_tile()
-            def is_valid(tt):
-                return tt == t
-            is_tile_valid = is_valid
 
         # top
         if row-1 > 0:
@@ -230,19 +283,10 @@ class MapExplorer:
 
         return neighbours
 
-    def _get_mining_target_tile(self):
-        t = self.LONGEST_SEQUENCE[0]
-        return self.MAP[t.row, t.column]
-
     def _get_nav_graph(self):
         G = nx.Graph()
 
         is_tile_valid = models.TILE_TYPE.is_passable
-        if self.MINING:
-            t = self._get_mining_target_tile()
-            def is_valid(tt):
-                return tt == t
-            is_tile_valid = is_valid
 
         edges : Dict[models.MapNode, List[models.MapNode]] = {}
 
@@ -263,79 +307,6 @@ class MapExplorer:
                 G.add_edge(k, edge, weight=1)
 
         return G
-
-    def get_raw_map(self) -> np.ndarray:
-        raw = self.MAP.copy()
-
-        for idx in np.ndindex(raw.shape):
-            if raw[idx] > models.EXPLORED_MARKER:
-                raw[idx] -= models.EXPLORED_MARKER
-
-        return raw
-
-    def _trace_sequence(node : models.MapNode, explored : Set[models.MapNode], map : np.ndarray) -> List[models.MapNode]:
-        result = []
-
-        row = node.row
-        col = node.column
-        marker = map[row,col]
-
-        max_row, max_col = map.shape
-
-        if row-1 >= 0:
-            n = models.MapNode(row-1, col)
-            val = map[n.row, n.column]
-            if val == marker and n not in explored:
-                result.append(n)
-                explored.add(n)
-        if row+1 < max_row:
-            n = models.MapNode(row+1,col)
-            val = map[n.row, n.column]
-            if val == marker and n not in explored:
-                result.append(n)
-                explored.add(n)
-        if col-1 >= 0:
-            n = models.MapNode(row, col-1)
-            val = map[n.row, n.column]
-            if val == marker and n not in explored:
-                result.append(n)
-                explored.add(n)
-        if col+1 < max_col:
-            n = models.MapNode(row,col+1)
-            val = map[n.row, n.column]
-            if val == marker and n not in explored:
-                result.append(n)
-                explored.add(n)
-
-        children = []
-        for n in result:
-            children += MapExplorer._trace_sequence(n, explored, map)
-
-        return result + children
-
-    def get_longest_sequence(self) -> List[models.MapNode]:
-        raw_map = self.get_raw_map()
-        explored = set()
-        longest_sequence = []
-        longest_sequence_size = 0
-
-        for idx in np.ndindex(raw_map.shape):
-            if not models.TILE_TYPE.is_passable(raw_map[idx]):
-                continue
-
-            node = models.MapNode(idx[0], idx[1])
-            candidate = [node]
-            explored.add(node)
-
-            for c in MapExplorer._trace_sequence(node, explored, raw_map):
-                explored.add(c)
-                candidate.append(c)
-
-            if len(candidate) > longest_sequence_size:
-                longest_sequence = candidate
-                longest_sequence_size = len(candidate)
-
-        return longest_sequence
 
     def manhattan_distance(a : models.MapNode, b : models.MapNode) -> float:
         """
@@ -447,220 +418,36 @@ class MapExplorer:
         elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
             self.COLUMN += 1
 
-    def _handle_direction_up(self):
-        map_rows, map_columns = self.MAP.shape
-
-        if self.SURROUNDING_TILES.forward != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.ROW == 0:
-                # we're at the top corner of the explored map
-                # so we prepend a row
-                self.MAP = np.pad(self.MAP, ((1,0),(0,0)))
-                # update current row index
-                self.ROW += 1
-
-                if self.DEBUG:
-                    print(f"Prepending a row")
-            # store tile value
-            if self.MAP[self.ROW-1, self.COLUMN] == 0:
-                self.MAP[self.ROW-1, self.COLUMN] = self.SURROUNDING_TILES.forward.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.forward):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.forward = self.MAP[self.ROW-1, self.COLUMN]
-        if self.SURROUNDING_TILES.left != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.COLUMN == 0:
-                # we're at the left corner of the explored map
-                # so we prepend a column
-                self.MAP = np.pad(self.MAP, ((0,0),(1,0)))
-                # update current column index
-                self.COLUMN += 1
-
-                if self.DEBUG:
-                    print(f"Prepending a column")
-            # store tile value
-            if self.MAP[self.ROW, self.COLUMN-1] == 0:
-                self.MAP[self.ROW, self.COLUMN-1] = self.SURROUNDING_TILES.left.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.left):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.left = self.MAP[self.ROW, self.COLUMN-1]
-        if self.SURROUNDING_TILES.right != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.COLUMN+1 == map_columns:
-                # we're at the right corner of the explored map
-                # so we append a column
-                self.MAP = np.pad(self.MAP, ((0,0),(0,1)))
-            # store tile value
-            if self.MAP[self.ROW, self.COLUMN+1] == 0:
-                self.MAP[self.ROW, self.COLUMN+1] = self.SURROUNDING_TILES.right.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.right):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.right = self.MAP[self.ROW, self.COLUMN+1]
-
-    def _handle_direction_down(self):
-        map_rows, map_columns = self.MAP.shape
-
-        if self.SURROUNDING_TILES.forward != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.ROW+1 == map_rows:
-                # we're at the bottom corner of the explored map
-                # so we append a row
-                self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
-            # store tile value
-            if self.MAP[self.ROW+1, self.COLUMN] == 0:
-                self.MAP[self.ROW+1, self.COLUMN] = self.SURROUNDING_TILES.forward.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.forward):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.forward = self.MAP[self.ROW+1, self.COLUMN]
-        if self.SURROUNDING_TILES.left != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.COLUMN+1 == map_columns:
-                # we're at the right corner of the explored map
-                # so we append a column
-                self.MAP = np.pad(self.MAP, ((0,0),(0,1)))
-            # store tile value
-            if self.MAP[self.ROW, self.COLUMN+1] == 0:
-                self.MAP[self.ROW, self.COLUMN+1] = self.SURROUNDING_TILES.left.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.left):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.left = self.MAP[self.ROW, self.COLUMN+1]
-        if self.SURROUNDING_TILES.right != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.COLUMN == 0:
-                # we're at the left corner of the explored map
-                # so we prepend a column
-                self.MAP = np.pad(self.MAP, ((0,0),(1,0)))
-                # update current column index
-                self.COLUMN += 1
-
-                if self.DEBUG:
-                    print(f"Prepending a column")
-            # store tile value
-            if self.MAP[self.ROW, self.COLUMN-1] == 0:
-                self.MAP[self.ROW, self.COLUMN-1] = self.SURROUNDING_TILES.right.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.right):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.right = self.MAP[self.ROW, self.COLUMN-1]
-
-    def _handle_direction_left(self):
-        map_rows, map_columns = self.MAP.shape
-
-        if self.SURROUNDING_TILES.forward != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.COLUMN == 0:
-                # we're at the left corner of the explored map
-                # so we prepend a column
-                self.MAP = np.pad(self.MAP, ((0,0),(1,0)))
-                # update current column index
-                self.COLUMN += 1
-
-                if self.DEBUG:
-                    print(f"Prepending a column")
-            # store tile value
-            if self.MAP[self.ROW, self.COLUMN-1] == 0:
-                self.MAP[self.ROW, self.COLUMN-1] = self.SURROUNDING_TILES.forward.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.forward):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.forward = self.MAP[self.ROW, self.COLUMN-1]
-        if self.SURROUNDING_TILES.left != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.ROW+1 == map_rows:
-                # we're at the bottom corner of the explored map
-                # so we append a row
-                self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
-            # store tile value
-            if self.MAP[self.ROW+1, self.COLUMN] == 0:
-                self.MAP[self.ROW+1, self.COLUMN] = self.SURROUNDING_TILES.left.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.left):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.left = self.MAP[self.ROW+1, self.COLUMN]
-        if self.SURROUNDING_TILES.right != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.ROW == 0:
-                # we're at the top corner of the explored map
-                # so we prepend a row
-                self.MAP = np.pad(self.MAP, ((1,0),(0,0)))
-                # update current row index
-                self.ROW += 1
-
-                if self.DEBUG:
-                    print(f"Prepending a row")
-            # store tile value
-            if self.MAP[self.ROW-1, self.COLUMN] == 0:
-                self.MAP[self.ROW-1, self.COLUMN] = self.SURROUNDING_TILES.right.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.right):
-                    self.UNEXPLORED_TILES += 1
-            else:
-                # update surrounding tiles from own map, if available
-                self.SURROUNDING_TILES.right = self.MAP[self.ROW-1, self.COLUMN]
-
-    def _handle_direction_right(self):
-        map_rows, map_columns = self.MAP.shape
-
-        if self.SURROUNDING_TILES.forward != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.COLUMN+1 == map_columns:
-                # we're at the right corner of the explored map
-                # so we append a column
-                self.MAP = np.pad(self.MAP, ((0,0),(0,1)))
-            # store tile value
-            if self.MAP[self.ROW, self.COLUMN+1] == 0:
-                self.MAP[self.ROW, self.COLUMN+1] = self.SURROUNDING_TILES.forward.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.forward):
-                    self.UNEXPLORED_TILES += 1
-        if self.SURROUNDING_TILES.left != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.ROW == 0:
-                # we're at the top corner of the explored map
-                # so we prepend a row
-                self.MAP = np.pad(self.MAP, ((1,0),(0,0)))
-                # update current row index
-                self.ROW += 1
-
-                if self.DEBUG:
-                    print(f"Prepending a row")
-            # store tile value
-            if self.MAP[self.ROW-1, self.COLUMN] == 0:
-                self.MAP[self.ROW-1, self.COLUMN] = self.SURROUNDING_TILES.left.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.left):
-                    self.UNEXPLORED_TILES += 1
-        if self.SURROUNDING_TILES.right != models.TILE_TYPE.OUT_OF_BOUND:
-            # extend the map if necessary
-            if self.ROW+1 == map_rows:
-                # we're at the bottom corner of the explored map
-                # so we append a row
-                self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
-            # store tile value
-            if self.MAP[self.ROW+1, self.COLUMN] == 0:
-                self.MAP[self.ROW+1, self.COLUMN] = self.SURROUNDING_TILES.right.value
-                if models.TILE_TYPE.is_passable(self.SURROUNDING_TILES.right):
-                    self.UNEXPLORED_TILES += 1
-
     def _update_map(self):
-        if self.DIRECTION == models.ROBOT_DIRECTION.UP:
-            self._handle_direction_up()
-        elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
-            self._handle_direction_down()
-        elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
-            self._handle_direction_left()
-        elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
-            self._handle_direction_right()
+        map_rows, map_columns = self.MAP.shape
+
+        if self.ROW == 0:
+            # we're at the top corner of the explored map
+            # so we prepend a row
+            self.MAP = np.pad(self.MAP, ((1,0),(0,0)))
+            # update current row index
+            self.ROW += 1
+            self.UNEXPLORED_TILES += map_columns
+
+        if self.COLUMN == 0:
+            # we're at the left corner of the explored map
+            # so we prepend a column
+            self.MAP = np.pad(self.MAP, ((0,0),(1,0)))
+            # update current column index
+            self.COLUMN += 1
+            self.UNEXPLORED_TILES += map_rows
+
+        if self.COLUMN+1 == map_columns:
+            # we're at the right corner of the explored map
+            # so we append a column
+            self.MAP = np.pad(self.MAP, ((0,0),(0,1)))
+            self.UNEXPLORED_TILES += map_rows
+
+        if self.ROW+1 == map_rows:
+            # we're at the bottom corner of the explored map
+            # so we append a row
+            self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
+            self.UNEXPLORED_TILES += map_columns
 
     def _detect_unexplored(self):
         return models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.forward) \
@@ -767,21 +554,22 @@ class MapExplorer:
         return results[costs[min(costs.keys())]] if results else None
 
     def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
-        if move_type == models.ROBOT_MOVE_TYPE.FORWARD:
-            # we moved to a new tile, as opposed to only changing direction
-            self._update_position()
-            if models.TILE_TYPE.is_passable_and_unexplored(self.MAP[self.ROW, self.COLUMN]):
-                self.MAP[self.ROW, self.COLUMN] += models.EXPLORED_MARKER
-                self.UNEXPLORED_TILES -= 1
+        pass
+        # if move_type == models.ROBOT_MOVE_TYPE.FORWARD:
+        #     # we moved to a new tile, as opposed to only changing direction
+        #     self._update_position()
+        #     if models.TILE_TYPE.is_passable_and_unexplored(self.MAP[self.ROW, self.COLUMN]):
+        #         self.MAP[self.ROW, self.COLUMN] += models.EXPLORED_MARKER
+        #         self.UNEXPLORED_TILES -= 1
     
-        self.DIRECTION = models.ROBOT_DIRECTION(response.robot_dir)
-        #self.SURROUNDING_TILES = models.SurroundingTiles(*response.surrounding_tiles)
+        # self.DIRECTION = models.ROBOT_DIRECTION(response.robot_dir)
+        # #self.SURROUNDING_TILES = models.SurroundingTiles(*response.surrounding_tiles)
 
-        #self._update_map()
+        # #self._update_map()
 
-        if self.DEBUG:
-            self.print_state()
-            print("\n" + chr(176)*70)
+        # if self.DEBUG:
+        #     self.print_state()
+        #     print("\n" + chr(176)*70)
 
         # if not self.NAVIGATING:
         #     if self._detect_unexplored():
@@ -807,21 +595,23 @@ class MapExplorer:
     #     move_response = self.move_client.move(move_type)
     #     return self.update(move_type, move_response)
 
+    def move(self, m : RobotMoveType):
+        self.LAST_MOVE_TYPE = m.move_type
+        self.robot_move_client.move(m)
+        if self.DEBUG:
+            print("move")
+            self.print_state()
+        # check return path length
+        # if necessary store current location and return to charge
+
     def move_test(self):
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.print_state()
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.print_state()
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.ROTATE_RIGHT))
-        self.print_state()
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.print_state()
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.ROTATE_LEFT))
-        self.print_state()
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.print_state()
-        self.robot_move_client.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.print_state()
+        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.move(RobotMoveType(move_type=RobotMoveType.ROTATE_RIGHT))
+        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.move(RobotMoveType(move_type=RobotMoveType.ROTATE_LEFT))
+        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
+        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
 
     def turn_around(self) -> models.MapUpdateResult:
         move_type = models.ROBOT_MOVE_TYPE.ROTATE_RIGHT

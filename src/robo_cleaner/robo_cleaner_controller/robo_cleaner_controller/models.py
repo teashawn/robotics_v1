@@ -2,8 +2,6 @@ from enum import IntEnum
 from typing import Tuple
 from robo_cleaner_interfaces.msg import BatteryStatus
 
-EXPLORED_MARKER = 1000
-
 class ROBOT_MOVE_TYPE(IntEnum):
     FORWARD = 0
     ROTATE_LEFT = 1
@@ -32,7 +30,7 @@ class TILE_TYPE(IntEnum):
     SMALL_OBSTACLE = 120
     BIG_OBSTACLE = 88
     OUT_OF_BOUND = 35
-    ORIGIN = 64
+    CHARGER = 64
     DIRT_0 = 48
     DIRT_1 = 49
     DIRT_2 = 50
@@ -40,15 +38,17 @@ class TILE_TYPE(IntEnum):
     UNKNOWN = 0
 
     def is_unexplored(val):
-        return val < EXPLORED_MARKER
+        return val in [
+            TILE_TYPE.DIRT_1,
+            TILE_TYPE.DIRT_2,
+            TILE_TYPE.DIRT_3,
+            TILE_TYPE.UNKNOWN,
+        ]
 
     def is_passable_and_unexplored(val):
         return  TILE_TYPE.is_passable(val) and TILE_TYPE.is_unexplored(val)
 
     def is_passable(val):
-        if val > EXPLORED_MARKER:
-            val -= EXPLORED_MARKER
-
         return val not in [
             TILE_TYPE.SMALL_OBSTACLE,
             TILE_TYPE.BIG_OBSTACLE,
@@ -90,6 +90,10 @@ class MapUpdateResult:
         self.next_step = next_step
         self.move_type = move_type
 
+class Coordinates:
+    def __init__(self, row : int, column : int):
+        self.row = row
+        self.column = column
 class MapNode:
     def __init__(self, row: int, column: int):
         self._row = row

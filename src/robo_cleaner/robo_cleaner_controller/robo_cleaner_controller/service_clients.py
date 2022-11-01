@@ -77,14 +77,23 @@ class FieldMapRevealedSubscriber(Node):
             qos)
 
 class RobotMoveCounterSubscriber(Node):
-    def __init__(self,debug : bool, cb):
+    def __init__(self, debug : bool, cb):
         super().__init__('robo_move_counter_subscriber')
 
+        qos = QoSProfile(
+            reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
+            durability=rclpy.qos.DurabilityPolicy.VOLATILE,
+            history=rclpy.qos.HistoryPolicy.SYSTEM_DEFAULT,
+            depth=10
+        )
+
+        self.DEBBUG = debug
         self.subscription = self.create_subscription(
             Int32,
             'robot_move_counter',
             cb,
-            10)
+            qos)
+        self.subscription  # prevent unused variable warnings
 
 class BatteryStatusClientAsync(Node):
 
@@ -169,12 +178,12 @@ class RobotMoveActionClient(Node):
 
     def _move_acknowledged(self, future):
         goal_handle = future.result()
-        self.cb_ack(goal_handle.accepted)
+        self.cb_ack(goal_handle)
 
     def _move_completed(self, future):
 
-        result = future.result().result
-        self.cb_completed(result)
+        result = future.result()
+        self.cb_completed(result.result)
 
     def _cancel_done(self, future):
         pass
