@@ -6,7 +6,6 @@ class ROBOT_MOVE_TYPE(IntEnum):
     FORWARD = 0
     ROTATE_LEFT = 1
     ROTATE_RIGHT = 2
-    UNKNOWN = 3
 
     def __str__(self):
         return self.name
@@ -52,9 +51,9 @@ class TILE_TYPE(IntEnum):
         return val not in [
             TILE_TYPE.SMALL_OBSTACLE,
             TILE_TYPE.BIG_OBSTACLE,
-            TILE_TYPE.OUT_OF_BOUND,
-            TILE_TYPE.UNKNOWN
+            TILE_TYPE.OUT_OF_BOUND
         ]
+        #TILE_TYPE.UNKNOWN
 
     def __str__(self):
         return self.name
@@ -63,16 +62,17 @@ class TILE_TYPE(IntEnum):
         return self.name
 
 class SurroundingTiles:
-    def __init__(self, left : int, forward : int, right : int):
+    def __init__(self, left : int, forward : int, right : int, back : int):
         self.left = TILE_TYPE(left)
         self.forward = TILE_TYPE(forward)
         self.right = TILE_TYPE(right)
+        self.back = TILE_TYPE(back)
 
     def __str__(self):
-        return f"Left: {self.left}, Forward: {self.forward}, Right: {self.right}"
+        return f"Left: {self.left}, Forward: {self.forward}, Right: {self.right}, Back: {self.back}"
 
     def __repr__(self):
-        return f"Left: {self.left}, Forward: {self.forward}, Right: {self.right}"
+        return f"Left: {self.left}, Forward: {self.forward}, Right: {self.right}, Back: {self.back}"
 
 class MapMoveResult(IntEnum):
     CONTINUE = 0
@@ -90,10 +90,25 @@ class MapUpdateResult:
         self.next_step = next_step
         self.move_type = move_type
 
+    def __str__(self):
+        return f"next_step: {self.next_step}, move_type: {self.move_type}"
+
+    def __repr__(self):
+        return f"next_step: {self.next_step}, move_type: {self.move_type}"
+
 class Coordinates:
     def __init__(self, row : int, column : int):
         self.row = row
         self.column = column
+
+    def __str__(self):
+        return f"Row: {self.row}, Column: {self.column}"
+
+    def __repr__(self):
+        return f"Row: {self.row}, Column: {self.column}"
+
+    def asMapNode(self):
+        return MapNode(self.row, self.column)
 class MapNode:
     def __init__(self, row: int, column: int):
         self._row = row

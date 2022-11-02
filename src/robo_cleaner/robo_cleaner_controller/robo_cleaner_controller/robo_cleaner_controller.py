@@ -1,5 +1,8 @@
 from robo_cleaner_controller import map_explorer as mp
 import rclpy
+from autologging import TRACE
+import logging, sys
+logging.basicConfig(level=TRACE, stream=sys.stdout, format="\n%(funcName)s:%(message)s\n") # %(levelname)s:%(name)s:%(funcName)s:%(message)s
 
 def main(args=None):
     rclpy.init(args=args)
@@ -16,10 +19,8 @@ def main(args=None):
         "https://github.com/teashawn/robotics_v1",
         "6557d62cd96857dcff990b121370bb5a0636b88c"
     )
-
-    explorer.init()
-    explorer.update_battery_status()
-    explorer.move_test()
+    
+    explorer.reveal_map()
 
     # # Traverse map
     # explorer.reveal_map()

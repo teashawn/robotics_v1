@@ -11,8 +11,7 @@ from typing import (
     Optional
 )
 from pprint import pprint
-import rclpy
-import os
+from autologging import traced
 
 """
 direction: move -> new direction
@@ -117,23 +116,31 @@ REORIENTATION_MAP = {
     },
 }
 
+@traced(
+    'reveal_map',
+    'navigate',
+    'move',
+    '_move_completed',
+    'return_to_charger',
+    'charge'
+)
 class MapExplorer:
     def __init__(self, debug : bool, use_turn_aware_pathfinding: bool):
         self.DIRECTION : models.ROBOT_DIRECTION = None
         self.ROW = 1
         self.COLUMN = 1
-        self.MAP = np.zeros((3,3), dtype=int)
-        self.GRAPH = nx.Graph()
         self.UNEXPLORED_TILES = 8
-        self.CHARGER_LOCATION = models.Coordinates(1,1)
         self.MOVES = 0
+        self.SURROUNDING_TILES = None
+        self.LAST_MOVE_TYPE = None
+        self.CHARGER_LOCATION = models.Coordinates(1,1)
+        self.BATTERY = models.Battery()
         self.DEBUG = debug
         self.NAVIGATING = False
         self.TURN_AWARE = use_turn_aware_pathfinding
-        self.BATTERY = models.Battery()
 
-        self.cancelled_moves = []
-        self.LAST_MOVE_TYPE = None
+        self.MAP = np.zeros((3,3), dtype=int)
+        self.GRAPH = nx.Graph()
 
         self.initial_state_client = service_clients.QueryInitialRobotStateClientAsync(debug)
         self.authenticator = service_clients.Authenticator()
@@ -147,16 +154,33 @@ class MapExplorer:
             cb_feedback = self._move_feedback
         )
 
-        if self.DEBUG:
-            print("__init__")
-            self.print_state()
-
     def __del__(self):
         self.initial_state_client.destroy_node()
         self.authenticator.destroy_node()
         self.battery_status_client.destroy_node()
         self.charge_battery_client.destroy_node()
         self.move_counter_listener.destroy_node()
+
+    def init(self) -> models.MapUpdateResult:
+        response = self.initial_state_client.query()
+
+        self.DIRECTION = models.ROBOT_DIRECTION(response.initial_robot_state.robot_dir)
+
+        initial_tile= models.TILE_TYPE(response.initial_robot_state.robot_tile)
+        self.MAP[1,1] = initial_tile.value
+        if models.TILE_TYPE(initial_tile.value) == models.TILE_TYPE.CHARGER:
+            self.CHARGER_LOCATION = models.Coordinates(1,1)
+
+        battery_status = response.initial_robot_state.battery_status
+        self.BATTERY.update(battery_status)
+        
+        self.SURROUNDING_TILES = self._get_surrounding_tiles()
+        
+        return self._explore_neighbours()
+
+    ##################################################################
+    # Callbacks
+    ##################################################################
 
     def _move_counter_updated(self, msg):
         """
@@ -176,12 +200,7 @@ class MapExplorer:
         self.MOVES += 1
 
     def _move_feedback(self, msg):
-        if msg.goal_id in self.cancelled_moves:
-            return
-
         approaching_field_marker = msg.feedback.approaching_field_marker
-        #progress_percent = msg.feedback.progress_percent
-        #print(f'Received feedback: {progress_percent}% {approaching_field_marker}')
 
         if approaching_field_marker > 0 and not models.TILE_TYPE.is_passable(approaching_field_marker):
             tile_ahead = self._get_coordinates_of_tile_ahead()
@@ -189,54 +208,46 @@ class MapExplorer:
             self.UNEXPLORED_TILES -= 1
 
             if self.DEBUG:
-                print(f"Cancelling move, because tile ahead is {models.TILE_TYPE(approaching_field_marker)}")
+                print(f"Cancelling move {tile_ahead}, because tile ahead is {models.TILE_TYPE(approaching_field_marker)}")
 
-            self.cancelled_moves.append(msg.goal_id)
             self.robot_move_client.cancel_move()
-            if self.DEBUG:
-                print("_move_feedback cancel")
 
     def _move_completed(self, result):
         if result.processed_field_marker == 0:
             # goal was cancelled
+            self.SURROUNDING_TILES = self._get_surrounding_tiles()
+            self._update_battery_status()
             return
 
         if self.LAST_MOVE_TYPE == RobotMoveType.FORWARD:
             self._update_position()
             self.MAP[self.ROW, self.COLUMN] = result.processed_field_marker
-            self.UNEXPLORED_TILES -= 1
+            if not models.TILE_TYPE.is_unexplored(result.processed_field_marker):
+                self.UNEXPLORED_TILES -= 1
             self._update_map()
             if self.DEBUG:
                 print(f"Entered tile: {models.TILE_TYPE(result.processed_field_marker)}")
         
         self.DIRECTION = ROTATION_MAP[self.DIRECTION][self.LAST_MOVE_TYPE]
-        self.update_battery_status()
-        if self.DEBUG:
-            print("_move_completed")
-            self.print_state()
+        self.SURROUNDING_TILES = self._get_surrounding_tiles()
+        self._update_battery_status()
         
-
     def print_state(self):
-        print("####################################")
+        # Indicate current position on map via negative sign
+        self.MAP[self.ROW, self.COLUMN] *= -1
+        print("#" * 70)
         print(f"# Map Explorer State:")
-        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Direction: {self.DIRECTION}, Unexplored: {self.UNEXPLORED_TILES}, Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}")
+        print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Direction: {self.DIRECTION}, Unexplored: {self.UNEXPLORED_TILES}")
+        print(f"# Charger: {self.CHARGER_LOCATION}")
+        print(f"# Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}, Battery: {self.BATTERY.moves_left}/{self.BATTERY.max_moves_on_full_energy}")
         pprint(self.MAP)
-        print("####################################")
+        print("#" * 70)
+        # Restore current position tile value
+        self.MAP[self.ROW, self.COLUMN] *= -1
 
-    def init(self): #  -> models.MapUpdateResult
-        response = self.initial_state_client.query()
-        initial_tile= models.TILE_TYPE(response.initial_robot_state.robot_tile)
-        self.DIRECTION = models.ROBOT_DIRECTION(response.initial_robot_state.robot_dir)
-        self.MAP[1,1] = initial_tile.value
-        if models.TILE_TYPE(initial_tile.value) == models.TILE_TYPE.CHARGER:
-            self.CHARGER_LOCATION = models.MapNode(1,1)
-        battery_status = response.initial_robot_state.battery_status
-        self.BATTERY.update(battery_status)
-
-        if self.DEBUG:
-            print("init")
-            self.print_state()
-        #return self.update(models.ROBOT_MOVE_TYPE.UNKNOWN, response.initial_robot_state)
+    ##################################################################
+    # Neighbour awareness
+    ##################################################################
 
     def _get_coordinates_of_tile_ahead(self) -> models.MapNode:
         if self.DIRECTION == models.ROBOT_DIRECTION.UP:
@@ -247,6 +258,62 @@ class MapExplorer:
             return models.MapNode(self.ROW+1, self.COLUMN)
         elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
             return models.MapNode(self.ROW, self.COLUMN-1)
+        else:
+            raise Exception(f"Invalid robot direction: {self.DIRECTION}")
+
+    def _get_coordinates_of_tile_behind(self) -> models.MapNode:
+        if self.DIRECTION == models.ROBOT_DIRECTION.UP:
+            return models.MapNode(self.ROW+1, self.COLUMN)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
+            return models.MapNode(self.ROW, self.COLUMN-1)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
+            return models.MapNode(self.ROW-1, self.COLUMN)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
+            return models.MapNode(self.ROW, self.COLUMN+1)
+        else:
+            raise Exception(f"Invalid robot direction: {self.DIRECTION}")
+
+    def _get_surrounding_tiles_up(self) -> models.SurroundingTiles:
+        forward = self.MAP[self.ROW-1, self.COLUMN]
+        right = self.MAP[self.ROW, self.COLUMN+1]
+        back = self.MAP[self.ROW+1, self.COLUMN]
+        left = self.MAP[self.ROW, self.COLUMN-1]
+
+        return models.SurroundingTiles(left, forward, right, back)
+
+    def _get_surrounding_tiles_right(self) -> models.SurroundingTiles:
+        forward = self.MAP[self.ROW, self.COLUMN+1]
+        right = self.MAP[self.ROW+1, self.COLUMN]
+        back = self.MAP[self.ROW, self.COLUMN-1]
+        left = self.MAP[self.ROW+1, self.COLUMN]
+
+        return models.SurroundingTiles(left, forward, right, back)
+
+    def _get_surrounding_tiles_down(self) -> models.SurroundingTiles:
+        forward = self.MAP[self.ROW+1, self.COLUMN]
+        right = self.MAP[self.ROW, self.COLUMN-1]
+        back = self.MAP[self.ROW-1, self.COLUMN]
+        left = self.MAP[self.ROW, self.COLUMN+1]
+
+        return models.SurroundingTiles(left, forward, right, back)
+
+    def _get_surrounding_tiles_left(self) -> models.SurroundingTiles:
+        forward = self.MAP[self.ROW, self.COLUMN-1]
+        right = self.MAP[self.ROW-1, self.COLUMN]
+        back = self.MAP[self.ROW, self.COLUMN+1]
+        left = self.MAP[self.ROW+1, self.COLUMN]
+
+        return models.SurroundingTiles(left, forward, right, back)
+
+    def _get_surrounding_tiles(self) -> models.SurroundingTiles:
+        if self.DIRECTION == models.ROBOT_DIRECTION.UP:
+            return self._get_surrounding_tiles_up()
+        elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
+            return self._get_surrounding_tiles_right()
+        elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
+            return self._get_surrounding_tiles_down()
+        elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
+            return self._get_surrounding_tiles_left()
         else:
             raise Exception(f"Invalid robot direction: {self.DIRECTION}")
 
@@ -282,6 +349,10 @@ class MapExplorer:
                 neighbours.append(models.MapNode(row, column-1))
 
         return neighbours
+
+    ##################################################################
+    # Pathfinding
+    ##################################################################
 
     def _get_nav_graph(self):
         G = nx.Graph()
@@ -322,10 +393,10 @@ class MapExplorer:
         x2, y2 = b.row, b.column
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
 
-    def get_path(self, destination : models.MapNode):
+    def _get_path(self, destination : models.MapNode, source : models.MapNode = None):
         self.GRAPH = self._get_nav_graph()
+        origin = source if source else models.MapNode(self.ROW, self.COLUMN)
 
-        origin = models.MapNode(self.ROW, self.COLUMN)
         if self.TURN_AWARE:
             return algo.astar_path(
                 self.GRAPH,
@@ -344,7 +415,7 @@ class MapExplorer:
                 weight="weight"
             )
 
-    def get_moves(self, steps : List[Tuple[int,int]]) -> List[models.ROBOT_MOVE_TYPE]:
+    def _get_moves(self, steps : List[Tuple[int,int]]) -> List[RobotMoveType]:
         moves : List[models.ROBOT_MOVE_TYPE] = []
 
         dir = self.DIRECTION
@@ -406,7 +477,15 @@ class MapExplorer:
                 # update direction after move
                 dir = ROTATION_MAP[dir][m]
 
-        return moves
+        # Convert result to robo_cleaner interfaces type.
+        # Usage of own type is remnant of robo miner solution,
+        # that is used accross the code.
+        # TODO: to be refactored once we have a working solution
+        return [RobotMoveType(move_type=m) for m in moves]
+
+    ##################################################################
+    # Mapping
+    ##################################################################
 
     def _update_position(self) -> None:
         if self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
@@ -418,6 +497,20 @@ class MapExplorer:
         elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
             self.COLUMN += 1
 
+    def _handle_row_prepend(self):
+        """
+        Shift current coordinates when map is resized
+        """
+        self.ROW += 1
+        self.CHARGER_LOCATION.row += 1
+
+    def _handle_column_prepend(self):
+        """
+        Shift current coordinates when map is resized
+        """
+        self.COLUMN += 1
+        self.CHARGER_LOCATION.column += 1
+
     def _update_map(self):
         map_rows, map_columns = self.MAP.shape
 
@@ -426,7 +519,7 @@ class MapExplorer:
             # so we prepend a row
             self.MAP = np.pad(self.MAP, ((1,0),(0,0)))
             # update current row index
-            self.ROW += 1
+            self._handle_row_prepend()
             self.UNEXPLORED_TILES += map_columns
 
         if self.COLUMN == 0:
@@ -434,7 +527,7 @@ class MapExplorer:
             # so we prepend a column
             self.MAP = np.pad(self.MAP, ((0,0),(1,0)))
             # update current column index
-            self.COLUMN += 1
+            self._handle_column_prepend()
             self.UNEXPLORED_TILES += map_rows
 
         if self.COLUMN+1 == map_columns:
@@ -449,10 +542,16 @@ class MapExplorer:
             self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
             self.UNEXPLORED_TILES += map_columns
 
+    ##################################################################
+    # Navigation
+    ##################################################################
+
     def _detect_unexplored(self):
-        return models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.forward) \
-            or models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.left) \
-            or models.TILE_TYPE.is_passable_and_unexplored(self.SURROUNDING_TILES.right)
+        for n in self._get_node_neighbours(self.ROW, self.COLUMN):
+            val = self.MAP[n.row, n.column]
+            if models.TILE_TYPE.is_passable_and_unexplored(val):
+                return True
+        return False
 
     def _explore_neighbours(self) -> models.MapUpdateResult:
         check_tile = models.TILE_TYPE.is_passable_and_unexplored #if self._detect_unexplored() else models.TILE_TYPE.is_passable
@@ -460,24 +559,33 @@ class MapExplorer:
         if check_tile(self.SURROUNDING_TILES.forward):
             return models.MapUpdateResult(
                 next_step=models.MapMoveResult.CONTINUE,
-                move_type=models.ROBOT_MOVE_TYPE.FORWARD)
+                move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD))
         elif check_tile(self.SURROUNDING_TILES.right):
             return models.MapUpdateResult(
                 next_step=models.MapMoveResult.CONTINUE,
-                move_type=models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
+                move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_RIGHT))
         elif check_tile(self.SURROUNDING_TILES.left):
             return models.MapUpdateResult(
                 next_step=models.MapMoveResult.CONTINUE,
-                move_type=models.ROBOT_MOVE_TYPE.ROTATE_LEFT)
+                move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_LEFT))
         else:
             if self.UNEXPLORED_TILES > 0:
-                return models.MapUpdateResult(
-                    next_step=models.MapMoveResult.BACKTRACK,
-                    move_type=models.ROBOT_MOVE_TYPE.FORWARD)
+                if self.NAVIGATING:
+                    return models.MapUpdateResult(
+                        next_step=models.MapMoveResult.CONTINUE,
+                        move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD)
+                    )
+                else:
+                    # find closest unexplored tile
+                    closest_unexplored = self._advanced_find_closest_unexplored_tile()
+                    return self.navigate(closest_unexplored)
+                    # return models.MapUpdateResult(
+                    #     next_step=models.MapMoveResult.BACKTRACK,
+                    #     move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD))
             else:
                 return models.MapUpdateResult(
                     next_step=models.MapMoveResult.FINISH,
-                    move_type=models.ROBOT_MOVE_TYPE.UNKNOWN
+                    move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD)
                 )
 
     def _find_closest_unexplored_tile(self, debug : Optional[bool] = None, blacklist : Optional[List[models.MapNode]] = None) -> Optional[models.MapNode]:
@@ -535,11 +643,19 @@ class MapExplorer:
     def _advanced_find_closest_unexplored_tile(self) -> Optional[models.MapNode]:
         N = 3
         results : List[models.MapNode] = []
+        unreachable : List[models.MapNode] = []
 
         # get up to N closest unexplored tiles
         while (self.UNEXPLORED_TILES > 0 and len(results) < N):
-            x = self._find_closest_unexplored_tile(blacklist=results)
+            x = self._find_closest_unexplored_tile(blacklist=results+unreachable)
             if x:
+                # ensure x is reachable
+                try:
+                    self._get_path(x)
+                except nx.exception.NetworkXNoPath:
+                    print(f"Discarding {x} due to unreachability")
+                    unreachable.append(x)
+                    continue
                 results.append(x)
             else:
                 break
@@ -547,76 +663,81 @@ class MapExplorer:
         # calculate their distance in moves
         costs = {}
         for i, r in enumerate(results):
-            steps = self.get_path(r)
-            costs[len(self.get_moves(steps))] = i
+            steps = self._get_path(r)
+            costs[len(self._get_moves(steps))] = i
 
         # pick the one cheapest in terms of moves
         return results[costs[min(costs.keys())]] if results else None
 
-    def update(self, move_type : models.ROBOT_MOVE_TYPE, response) -> models.MapUpdateResult:
-        pass
-        # if move_type == models.ROBOT_MOVE_TYPE.FORWARD:
-        #     # we moved to a new tile, as opposed to only changing direction
-        #     self._update_position()
-        #     if models.TILE_TYPE.is_passable_and_unexplored(self.MAP[self.ROW, self.COLUMN]):
-        #         self.MAP[self.ROW, self.COLUMN] += models.EXPLORED_MARKER
-        #         self.UNEXPLORED_TILES -= 1
-    
-        # self.DIRECTION = models.ROBOT_DIRECTION(response.robot_dir)
-        # #self.SURROUNDING_TILES = models.SurroundingTiles(*response.surrounding_tiles)
+    def _return_to_charger(self):
+        if self.DEBUG:
+            print("Return to charger")
 
-        # #self._update_map()
+        res = self.navigate(self.CHARGER_LOCATION.asMapNode())
 
-        # if self.DEBUG:
-        #     self.print_state()
-        #     print("\n" + chr(176)*70)
+        if self.DEBUG:
+            print("Reached charger")
 
-        # if not self.NAVIGATING:
-        #     if self._detect_unexplored():
-        #         # there are unexplored tiles in our immediate neighbours
-        #         return self._explore_neighbours()
-        #     else:
-        #         # find closest unexplored tile
-        #         closest_unexplored = self._advanced_find_closest_unexplored_tile()
-        #         if closest_unexplored:
-        #             # navigate to it
-        #             return self.navigate(closest_unexplored)
-        #         else:
-        #             # we have explored the entire map
-        #             return self._explore_neighbours()
-        # else:
-        #     # skip calculations if we are navigating and thus not
-        #     # interested in figuring out our next move
-        #     return models.MapUpdateResult(
-        #         next_step=models.MapMoveResult.CONTINUE,
-        #         move_type=models.ROBOT_MOVE_TYPE.UNKNOWN)
-    
-    # def move(self, move_type : RobotMoveType) -> models.MapUpdateResult:
-    #     move_response = self.move_client.move(move_type)
-    #     return self.update(move_type, move_response)
+        self._charge()
 
-    def move(self, m : RobotMoveType):
+        if self.DEBUG:
+            print("Charged")
+
+        return res
+
+    ##################################################################
+    # Battery
+    ##################################################################
+
+    def _charge_necessary(self, source : models.MapNode = None):
+        steps = self._get_path(self.CHARGER_LOCATION.asMapNode(), source)
+        moves_to_charger = self._get_moves(steps)
+        return len(moves_to_charger) >= self.BATTERY.moves_left
+
+    def _charge(self, turns : int = 0):
+        res = self.charge_battery_client.charge(turns)
+        self.MOVES += res.turns_spend_charging
+        self.BATTERY.update(res.battery_status)
+        self.print_state()
+
+    def _update_battery_status(self):
+        status = self.battery_status_client.query()
+        self.BATTERY.update(status)
+
+    ##################################################################
+    # Commands
+    ##################################################################
+
+    def move(self, m : RobotMoveType) -> models.MapUpdateResult:
         self.LAST_MOVE_TYPE = m.move_type
         self.robot_move_client.move(m)
+
         if self.DEBUG:
             print("move")
             self.print_state()
-        # check return path length
-        # if necessary store current location and return to charge
-
-    def move_test(self):
-        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.move(RobotMoveType(move_type=RobotMoveType.ROTATE_RIGHT))
-        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.move(RobotMoveType(move_type=RobotMoveType.ROTATE_LEFT))
-        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-        self.move(RobotMoveType(move_type=RobotMoveType.FORWARD))
-
-    def turn_around(self) -> models.MapUpdateResult:
-        move_type = models.ROBOT_MOVE_TYPE.ROTATE_RIGHT
-        res = self.move(move_type)
-        return self.move(move_type)
+        
+        if not self.NAVIGATING:
+            if self._charge_necessary():
+                return self._return_to_charger()
+            elif self._detect_unexplored():
+                # there are unexplored tiles in our immediate neighbours
+                return self._explore_neighbours()
+            else:
+                # find closest unexplored tile
+                closest_unexplored = self._advanced_find_closest_unexplored_tile()
+                if closest_unexplored:
+                    # navigate to it
+                    return self.navigate(closest_unexplored)
+                else:
+                    # we have explored the entire map
+                    return self._explore_neighbours()
+        else:
+            # skip calculations if we are navigating and thus not
+            # interested in figuring out our next move
+            return models.MapUpdateResult(
+                next_step=models.MapMoveResult.CONTINUE,
+                move_type=models.ROBOT_MOVE_TYPE.FORWARD
+            )
 
     def authenticate(self, user : str, repo : str, commit : str):
         self.authenticator.authenticate(user, repo, commit)
@@ -627,34 +748,47 @@ class MapExplorer:
         print("Revealing map...")
 
         while res.next_step != models.MapMoveResult.FINISH:
-            if res.next_step == models.MapMoveResult.BACKTRACK:
-                res = self.turn_around()
-            else:
-                res = self.move(res.move_type)
+            res = self.move(res.move_type)
+            # if res.next_step == models.MapMoveResult.BACKTRACK:
+            #     input()
+            #     res = self.turn_around()
+            #     input()
+            # else:
+            #     res = self.move(res.move_type)
 
-        print(f"Revealed map in {self.move_client.moves} moves.")
+        print(f"Revealed map in {self.MOVES} moves.")
 
-    def navigate(self, destination):
+    def navigate(self, destination, kamikaze=False):
+        """
+        `kamikaze` allows navigation to locations of no return,
+        i.e. we won't have enough battery to reach the charger
+        from the destination.
+        """
+        not_returning_to_charger = self.CHARGER_LOCATION.asMapNode() != destination
+
+        if not_returning_to_charger and self._charge_necessary(source=destination):
+            if not kamikaze:
+                err_msg = f"Refusing to navigate! Not enough juice to reach charger from destination!"
+                raise Exception(err_msg)
+
         if self.DEBUG:
             print("Starting navigation...")
 
         self.NAVIGATING = True
 
-        steps = self.get_path(destination)
-        moves = self.get_moves(steps)
+        steps = self._get_path(destination)
+        moves = self._get_moves(steps)
 
         for m in moves:
-            move_response = self.move_client.move(m)
-            self.update(m, move_response)
+            self.move(m)
+
+        result = self._explore_neighbours()
 
         self.NAVIGATING = False
 
         if self.DEBUG:
             print("Finished navigation.")
 
-        return self._explore_neighbours()
+        return result
 
-    def update_battery_status(self):
-        status = self.battery_status_client.query()
-        self.BATTERY.update(status)
         
