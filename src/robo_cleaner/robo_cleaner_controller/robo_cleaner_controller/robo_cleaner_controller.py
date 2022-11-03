@@ -28,12 +28,6 @@ def main(args=None):
     # # Validate map
     # explorer.validate_map()
 
-    # # Validate longest sequence
-    # explorer.validate_longest_sequence()
-
-    # # Mine longest sequence
-    # explorer.mine_longest_sequence()
-
     # Shut down
     rclpy.shutdown()
 

@@ -36,6 +36,13 @@ class TILE_TYPE(IntEnum):
     DIRT_3 = 51
     UNKNOWN = 0
 
+    def is_reentrant_dirt(val):
+        return val in [
+            TILE_TYPE.DIRT_1,
+            TILE_TYPE.DIRT_2,
+            TILE_TYPE.DIRT_3,
+        ]
+
     def is_unexplored(val):
         return val in [
             TILE_TYPE.DIRT_1,

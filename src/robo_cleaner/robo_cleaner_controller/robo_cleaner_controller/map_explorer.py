@@ -12,6 +12,7 @@ from typing import (
 )
 from pprint import pprint
 from autologging import traced
+import time
 
 """
 direction: move -> new direction
@@ -204,8 +205,14 @@ class MapExplorer:
 
         if approaching_field_marker > 0 and not models.TILE_TYPE.is_passable(approaching_field_marker):
             tile_ahead = self._get_coordinates_of_tile_ahead()
-            self.MAP[tile_ahead.row, tile_ahead.column] = approaching_field_marker
-            self.UNEXPLORED_TILES -= 1
+            
+            # Special case for out of bounds marker. Because we know the map
+            # is a rectangle, we mark the entire rectangle side as out of bound ;) 🕺🕺🕺
+            if approaching_field_marker == models.TILE_TYPE.OUT_OF_BOUND:
+                self._mark_map_border(tile_ahead, approaching_field_marker)
+            else:
+                self.MAP[tile_ahead.row, tile_ahead.column] = approaching_field_marker
+                self.UNEXPLORED_TILES -= 1
 
             if self.DEBUG:
                 print(f"Cancelling move {tile_ahead}, because tile ahead is {models.TILE_TYPE(approaching_field_marker)}")
@@ -222,6 +229,10 @@ class MapExplorer:
         if self.LAST_MOVE_TYPE == RobotMoveType.FORWARD:
             self._update_position()
             self.MAP[self.ROW, self.COLUMN] = result.processed_field_marker
+
+            # NB This is important to keep straight the count of tile that need to be visited!!!
+            if models.TILE_TYPE.is_reentrant_dirt(result.processed_field_marker):
+                self.UNEXPLORED_TILES += 1
             if not models.TILE_TYPE.is_unexplored(result.processed_field_marker):
                 self.UNEXPLORED_TILES -= 1
             self._update_map()
@@ -239,11 +250,15 @@ class MapExplorer:
         print(f"# Map Explorer State:")
         print(f"# Row: {self.ROW}, Column: {self.COLUMN}, Direction: {self.DIRECTION}, Unexplored: {self.UNEXPLORED_TILES}")
         print(f"# Charger: {self.CHARGER_LOCATION}")
-        print(f"# Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}, Battery: {self.BATTERY.moves_left}/{self.BATTERY.max_moves_on_full_energy}")
+        print(f"# Map size: {self.MAP.shape}, Moves: {self.MOVES}, Navigating: {self.NAVIGATING}")
+        print(f"# Battery: {self.BATTERY.moves_left}/{self.BATTERY.max_moves_on_full_energy}, Moves to charger: {len(self._get_moves_to_charger())}")
         pprint(self.MAP)
         print("#" * 70)
         # Restore current position tile value
         self.MAP[self.ROW, self.COLUMN] *= -1
+
+        if self.BATTERY.moves_left <= len(self._get_moves_to_charger()):
+            input()
 
     ##################################################################
     # Neighbour awareness
@@ -542,6 +557,34 @@ class MapExplorer:
             self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
             self.UNEXPLORED_TILES += map_columns
 
+    def _mark_map_border(self, tile_ahead : models.MapNode, approaching_field_marker : int):
+        rows, columns = self.MAP.shape
+        # determine which rectangle side we're at
+        if tile_ahead.row == 0:
+            # top
+            border = self.MAP[tile_ahead.row]
+            converted = len(border[border == 0])
+            self.MAP[tile_ahead.row] = [approaching_field_marker for i in range(columns)]
+            self.UNEXPLORED_TILES -= converted
+        elif tile_ahead.column == 0:
+            # left
+            border = self.MAP[:, tile_ahead.column]
+            converted = len(border[border == 0])
+            self.MAP[:, tile_ahead.column] = [approaching_field_marker for i in range(rows)]
+            self.UNEXPLORED_TILES -= converted
+        elif tile_ahead.row == rows-1:
+            # bottom
+            border = self.MAP[rows-1]
+            converted = len(border[border == 0])
+            self.MAP[rows-1] = [approaching_field_marker for i in range(columns)]
+            self.UNEXPLORED_TILES -= converted
+        elif tile_ahead.column == columns-1:
+            # right
+            border = self.MAP[:, columns-1]
+            converted = len(border[border == 0])
+            self.MAP[:, columns-1] = [approaching_field_marker for i in range(rows)]
+            self.UNEXPLORED_TILES -= converted
+
     ##################################################################
     # Navigation
     ##################################################################
@@ -554,7 +597,7 @@ class MapExplorer:
         return False
 
     def _explore_neighbours(self) -> models.MapUpdateResult:
-        check_tile = models.TILE_TYPE.is_passable_and_unexplored #if self._detect_unexplored() else models.TILE_TYPE.is_passable
+        check_tile = models.TILE_TYPE.is_passable_and_unexplored
 
         if check_tile(self.SURROUNDING_TILES.forward):
             return models.MapUpdateResult(
@@ -570,18 +613,18 @@ class MapExplorer:
                 move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_LEFT))
         else:
             if self.UNEXPLORED_TILES > 0:
-                if self.NAVIGATING:
-                    return models.MapUpdateResult(
-                        next_step=models.MapMoveResult.CONTINUE,
-                        move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD)
-                    )
-                else:
-                    # find closest unexplored tile
-                    closest_unexplored = self._advanced_find_closest_unexplored_tile()
-                    return self.navigate(closest_unexplored)
-                    # return models.MapUpdateResult(
-                    #     next_step=models.MapMoveResult.BACKTRACK,
-                    #     move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD))
+                return models.MapUpdateResult(
+                    next_step=models.MapMoveResult.BACKTRACK,
+                    move_type=models.ROBOT_MOVE_TYPE.FORWARD)
+                # if self.NAVIGATING:
+                #     return models.MapUpdateResult(
+                #         next_step=models.MapMoveResult.CONTINUE,
+                #         move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD)
+                #     )
+                # else:
+                #     # find closest unexplored tile
+                #     closest_unexplored = self._advanced_find_closest_unexplored_tile()
+                #     return self.navigate(closest_unexplored)
             else:
                 return models.MapUpdateResult(
                     next_step=models.MapMoveResult.FINISH,
@@ -653,7 +696,8 @@ class MapExplorer:
                 try:
                     self._get_path(x)
                 except nx.exception.NetworkXNoPath:
-                    print(f"Discarding {x} due to unreachability")
+                    print(f"Discarding {x} due to unreachability from {self.ROW}, {self.COLUMN}")
+                    input()
                     unreachable.append(x)
                     continue
                 results.append(x)
@@ -685,13 +729,37 @@ class MapExplorer:
 
         return res
 
+    def _turn_around(self) -> models.MapUpdateResult:
+        self.SURROUNDING_TILES = self._get_surrounding_tiles()
+        check_tile = models.TILE_TYPE.is_passable
+
+        # if check_tile(self.SURROUNDING_TILES.forward):
+        #     return models.MapUpdateResult(
+        #         next_step=models.MapMoveResult.CONTINUE,
+        #         move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.FORWARD))
+        if check_tile(self.SURROUNDING_TILES.right):
+            return models.MapUpdateResult(
+                next_step=models.MapMoveResult.CONTINUE,
+                move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_RIGHT))
+        elif check_tile(self.SURROUNDING_TILES.left):
+            return models.MapUpdateResult(
+                next_step=models.MapMoveResult.CONTINUE,
+                move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_LEFT))
+        else:
+            move_type = RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_RIGHT)
+            res = self.move(move_type)
+            return self.move(move_type)
+
     ##################################################################
     # Battery
     ##################################################################
 
-    def _charge_necessary(self, source : models.MapNode = None):
+    def _get_moves_to_charger(self, source : models.MapNode = None):
         steps = self._get_path(self.CHARGER_LOCATION.asMapNode(), source)
-        moves_to_charger = self._get_moves(steps)
+        return self._get_moves(steps)
+
+    def _charge_necessary(self, source : models.MapNode = None):
+        moves_to_charger = self._get_moves_to_charger(source)
         return len(moves_to_charger) >= self.BATTERY.moves_left
 
     def _charge(self, turns : int = 0):
@@ -709,29 +777,38 @@ class MapExplorer:
     ##################################################################
 
     def move(self, m : RobotMoveType) -> models.MapUpdateResult:
+        print("entered")
         self.LAST_MOVE_TYPE = m.move_type
         self.robot_move_client.move(m)
+        print("after call")
 
         if self.DEBUG:
             print("move")
             self.print_state()
         
         if not self.NAVIGATING:
+            print("not navigating")
             if self._charge_necessary():
+                print("charge necessary")
                 return self._return_to_charger()
             elif self._detect_unexplored():
+                print("detect unexplored")
                 # there are unexplored tiles in our immediate neighbours
                 return self._explore_neighbours()
             else:
+                print("find closest")
                 # find closest unexplored tile
                 closest_unexplored = self._advanced_find_closest_unexplored_tile()
                 if closest_unexplored:
+                    print("closest found")
                     # navigate to it
                     return self.navigate(closest_unexplored)
                 else:
+                    print("no closest")
                     # we have explored the entire map
                     return self._explore_neighbours()
         else:
+            print("finally")
             # skip calculations if we are navigating and thus not
             # interested in figuring out our next move
             return models.MapUpdateResult(
@@ -748,13 +825,19 @@ class MapExplorer:
         print("Revealing map...")
 
         while res.next_step != models.MapMoveResult.FINISH:
-            res = self.move(res.move_type)
-            # if res.next_step == models.MapMoveResult.BACKTRACK:
-            #     input()
-            #     res = self.turn_around()
-            #     input()
-            # else:
-            #     res = self.move(res.move_type)
+            #time.sleep(1)
+            if res.next_step == models.MapMoveResult.BACKTRACK:
+                res = self._turn_around()
+            else:
+                res = self.move(res.move_type)
+
+                # Opportunistic optimization
+                if models.MapNode(self.ROW, self.COLUMN) == self.CHARGER_LOCATION.asMapNode():
+                    if self.BATTERY.moves_left < (self.BATTERY.max_moves_on_full_energy-3):
+                        self._charge()
+                        res = models.MapUpdateResult(
+                                next_step=models.MapMoveResult.CONTINUE,
+                                move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_RIGHT))
 
         print(f"Revealed map in {self.MOVES} moves.")
 
