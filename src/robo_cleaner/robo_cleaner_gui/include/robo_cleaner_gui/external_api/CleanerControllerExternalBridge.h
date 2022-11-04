@@ -128,7 +128,7 @@ private:
   const rclcpp::CallbackGroup::SharedPtr _publishersCallbackGroup =
       create_callback_group(rclcpp::CallbackGroupType::Reentrant);
   const rclcpp::CallbackGroup::SharedPtr _actionsCallbackGroup =
-      create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   ControllerStatus _controllerStatus = ControllerStatus::IDLE;
 };
