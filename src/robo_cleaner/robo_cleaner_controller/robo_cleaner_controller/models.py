@@ -92,6 +92,7 @@ class MapMoveResult(IntEnum):
     CONTINUE = 0
     BACKTRACK = 1
     FINISH = 3
+    CANCEL= 4
 
     def __str__(self):
         return self.name

@@ -11,7 +11,7 @@ def main(args=None):
     explorer = mp.MapExplorer(
         debug=True,
         use_turn_aware_pathfinding=True,
-        retardation = 0.2
+        retardation = 0 # sleeping between move commands seems to somewhat alleviate crashes in `robo_cleaner_gui`
     )
 
     # Authenticate
@@ -20,18 +20,12 @@ def main(args=None):
         "https://github.com/teashawn/robotics_v1",
         "6557d62cd96857dcff990b121370bb5a0636b88c"
     )
-    
-    explorer.reveal_map()
 
     # # Traverse map
-    # explorer.reveal_map()
-
-    # # Validate map
-    # explorer.validate_map()
+    explorer.reveal_map()
 
     # Shut down
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
