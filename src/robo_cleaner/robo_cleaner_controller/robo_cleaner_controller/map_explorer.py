@@ -295,6 +295,30 @@ class MapExplorer:
         else:
             raise Exception(f"Invalid robot direction: {self.DIRECTION}")
 
+    def _get_coordinates_of_tile_on_the_right(self) -> models.MapNode:
+        if self.DIRECTION == models.ROBOT_DIRECTION.UP:
+            return models.MapNode(self.ROW, self.COLUMN+1)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
+            return models.MapNode(self.ROW+1, self.COLUMN)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
+            return models.MapNode(self.ROW, self.COLUMN-1)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
+            return models.MapNode(self.ROW-1, self.COLUMN)
+        else:
+            raise Exception(f"Invalid robot direction: {self.DIRECTION}")
+
+    def _get_coordinates_of_tile_on_the_left(self) -> models.MapNode:
+        if self.DIRECTION == models.ROBOT_DIRECTION.UP:
+            return models.MapNode(self.ROW, self.COLUMN-1)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.RIGHT:
+            return models.MapNode(self.ROW-1, self.COLUMN)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.DOWN:
+            return models.MapNode(self.ROW, self.COLUMN+1)
+        elif self.DIRECTION == models.ROBOT_DIRECTION.LEFT:
+            return models.MapNode(self.ROW+1, self.COLUMN)
+        else:
+            raise Exception(f"Invalid robot direction: {self.DIRECTION}")
+
     def _get_surrounding_tiles_up(self) -> models.SurroundingTiles:
         forward = self.MAP[self.ROW-1, self.COLUMN]
         right = self.MAP[self.ROW, self.COLUMN+1]
@@ -802,6 +826,24 @@ class MapExplorer:
         self.SURROUNDING_TILES = self._get_surrounding_tiles()
         check_tile = models.TILE_TYPE.is_passable
 
+        # Special case: we are in an reentrant dirt tile
+        # and all our neighbours are explored
+        if models.TILE_TYPE.is_reentrant_dirt(self.MAP[self.ROW, self.COLUMN]) and not self._detect_unexplored():
+            current_node = models.MapNode(self.ROW, self.COLUMN)
+
+            if check_tile(self.SURROUNDING_TILES.left):
+                self.navigate(self._get_coordinates_of_tile_on_the_left())
+                return self.navigate(current_node)
+            elif check_tile(self.SURROUNDING_TILES.right):
+                self.navigate(self._get_coordinates_of_tile_on_the_right())
+                return self.navigate(current_node)
+            elif check_tile(self.SURROUNDING_TILES.back):
+                self.navigate(self._get_coordinates_of_tile_behind())
+                return self.navigate(current_node)
+            elif check_tile(self.SURROUNDING_TILES.forward):
+                self.navigate(self._get_coordinates_of_tile_ahead())
+                return self.navigate(current_node)            
+
         # if check_tile(self.SURROUNDING_TILES.forward):
         #     return models.MapUpdateResult(
         #         next_step=models.MapMoveResult.CONTINUE,
@@ -852,6 +894,7 @@ class MapExplorer:
     ##################################################################
 
     def move(self, m : RobotMoveType) -> models.MapUpdateResult:
+        time.sleep(0.2)
         print("entered")
         self.LAST_MOVE_TYPE = m.move_type
         self.robot_move_client.move(m)
@@ -934,8 +977,9 @@ class MapExplorer:
 
         if not_returning_to_charger and self._charge_necessary(source=destination):
             if not kamikaze:
-                err_msg = f"Refusing to navigate! Not enough juice to reach charger from destination!"
-                raise Exception(err_msg)
+                self._return_to_charger()
+                # err_msg = f"Refusing to navigate! Not enough juice to reach charger from destination!"
+                # raise Exception(err_msg)
 
         if self.DEBUG:
             print("Starting navigation...")

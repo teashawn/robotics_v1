@@ -138,7 +138,7 @@ class MapNode:
         return hash((self._row, self._column))
 
     def __eq__(self, other):
-        return self._row == other._row and self._column == other._column
+        return self._row == other.row and self._column == other.column
 
     @property
     def row(self):
