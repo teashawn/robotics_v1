@@ -213,7 +213,7 @@ class MapExplorer:
                 self._mark_map_border(tile_ahead)
             else:
                 self.MAP[tile_ahead.row, tile_ahead.column] = approaching_field_marker
-                self.UNEXPLORED_TILES -= 1
+                #self.UNEXPLORED_TILES -= 1
 
             if self.DEBUG:
                 print(f"Cancelling move {tile_ahead}, because tile ahead is {models.TILE_TYPE(approaching_field_marker)}")
@@ -232,17 +232,18 @@ class MapExplorer:
             self.MAP[self.ROW, self.COLUMN] = result.processed_field_marker
 
             # NB This is important to keep straight the count of tiles that need to be visited!!!
-            if models.TILE_TYPE.is_reentrant_dirt(result.processed_field_marker):
-                self.UNEXPLORED_TILES += 1
+            # if models.TILE_TYPE.is_reentrant_dirt(result.processed_field_marker):
+            #     self.UNEXPLORED_TILES += 1
 
-            if not models.TILE_TYPE.is_unexplored(result.processed_field_marker):
-                self.UNEXPLORED_TILES -= 1
+            # if not models.TILE_TYPE.is_unexplored(result.processed_field_marker):
+            #     self.UNEXPLORED_TILES -= 1
 
-            self._update_map()
+            #self._update_map()
 
             if self.DEBUG:
                 print(f"Entered tile: {models.TILE_TYPE(result.processed_field_marker)}")
         
+        self._update_map()
         self.DIRECTION = ROTATION_MAP[self.DIRECTION][self.LAST_MOVE_TYPE]
         self.SURROUNDING_TILES = self._get_surrounding_tiles()
         self._update_battery_status()
@@ -532,6 +533,15 @@ class MapExplorer:
         self.COLUMN += 1
         self.CHARGER_LOCATION.column += 1
 
+    def _get_unexplored_count(self):
+        unique, counts = np.unique(self.MAP, return_counts=True)
+        values_map = dict(zip(unique, counts))
+
+        return values_map.get(models.TILE_TYPE.UNKNOWN, 0) + \
+            values_map.get(models.TILE_TYPE.DIRT_1, 0) + \
+                values_map.get(models.TILE_TYPE.DIRT_2, 0) + \
+                    values_map.get(models.TILE_TYPE.DIRT_3, 0)
+
     def _update_map(self):
         map_rows, map_columns = self.MAP.shape
 
@@ -541,7 +551,7 @@ class MapExplorer:
             self.MAP = np.pad(self.MAP, ((1,0),(0,0)))
             # update current row index
             self._handle_row_prepend()
-            self.UNEXPLORED_TILES += map_columns
+            #self.UNEXPLORED_TILES += map_columns
 
         if self.COLUMN == 0:
             # we're at the left corner of the explored map
@@ -549,19 +559,21 @@ class MapExplorer:
             self.MAP = np.pad(self.MAP, ((0,0),(1,0)))
             # update current column index
             self._handle_column_prepend()
-            self.UNEXPLORED_TILES += map_rows
+            #self.UNEXPLORED_TILES += map_rows
 
         if self.COLUMN+1 == map_columns:
             # we're at the right corner of the explored map
             # so we append a column
             self.MAP = np.pad(self.MAP, ((0,0),(0,1)))
-            self.UNEXPLORED_TILES += map_rows
+            #self.UNEXPLORED_TILES += map_rows
 
         if self.ROW+1 == map_rows:
             # we're at the bottom corner of the explored map
             # so we append a row
             self.MAP = np.pad(self.MAP, ((0,1),(0,0)))
-            self.UNEXPLORED_TILES += map_columns
+            #self.UNEXPLORED_TILES += map_columns
+
+        self.UNEXPLORED_TILES = self._get_unexplored_count()
 
     def _mark_map_border(self, tile_ahead : models.MapNode):
         rows, columns = self.MAP.shape
@@ -640,8 +652,8 @@ class MapExplorer:
                 converted = len(border[border == 0])
                 self.MAP[:, columns-1] = [models.TILE_TYPE.OUT_OF_BOUND for i in range(rows)]
 
-        if converted > 0:
-            self.UNEXPLORED_TILES -= converted
+        # if converted > 0:
+        #     self.UNEXPLORED_TILES -= converted
 
     ##################################################################
     # Navigation
@@ -670,7 +682,7 @@ class MapExplorer:
                 next_step=models.MapMoveResult.CONTINUE,
                 move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_LEFT))
         else:
-            if True: #self.UNEXPLORED_TILES > 0:
+            if self.UNEXPLORED_TILES > 0:
                 return models.MapUpdateResult(
                     next_step=models.MapMoveResult.BACKTRACK,
                     move_type=models.ROBOT_MOVE_TYPE.FORWARD)
