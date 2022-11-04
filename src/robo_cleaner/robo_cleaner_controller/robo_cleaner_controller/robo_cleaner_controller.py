@@ -10,7 +10,8 @@ def main(args=None):
     # State
     explorer = mp.MapExplorer(
         debug=True,
-        use_turn_aware_pathfinding=True
+        use_turn_aware_pathfinding=True,
+        retardation = 0.2
     )
 
     # Authenticate

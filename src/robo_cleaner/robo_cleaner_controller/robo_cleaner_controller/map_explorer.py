@@ -126,7 +126,7 @@ REORIENTATION_MAP = {
     'charge'
 )
 class MapExplorer:
-    def __init__(self, debug : bool, use_turn_aware_pathfinding: bool):
+    def __init__(self, debug : bool, use_turn_aware_pathfinding: bool, retardation : float = 0):
         self.DIRECTION : models.ROBOT_DIRECTION = None
         self.ROW = 1
         self.COLUMN = 1
@@ -140,6 +140,7 @@ class MapExplorer:
         self.NAVIGATING = False
         self.NAVIGATION_TARGET = None
         self.TURN_AWARE = use_turn_aware_pathfinding
+        self.RETARDATION = retardation
 
         self.MAP = np.zeros((3,3), dtype=int)
         self.GRAPH = nx.Graph()
@@ -894,7 +895,9 @@ class MapExplorer:
     ##################################################################
 
     def move(self, m : RobotMoveType) -> models.MapUpdateResult:
-        time.sleep(0.2)
+        if self.RETARDATION > 0:
+            time.sleep(self.RETARDATION)
+
         print("entered")
         self.LAST_MOVE_TYPE = m.move_type
         self.robot_move_client.move(m)
@@ -966,20 +969,14 @@ class MapExplorer:
                                 move_type=RobotMoveType(move_type=models.ROBOT_MOVE_TYPE.ROTATE_RIGHT))
 
         print(f"Revealed map in {self.MOVES} moves.")
+        input()
+        self._return_to_charger()
 
-    def navigate(self, destination, kamikaze=False, include_unknown : bool = True):
-        """
-        `kamikaze` allows navigation to locations of no return,
-        i.e. we won't have enough battery to reach the charger
-        from the destination.
-        """
+    def navigate(self, destination, include_unknown : bool = True):
         not_returning_to_charger = self.CHARGER_LOCATION.asMapNode() != destination
 
         if not_returning_to_charger and self._charge_necessary(source=destination):
-            if not kamikaze:
-                self._return_to_charger()
-                # err_msg = f"Refusing to navigate! Not enough juice to reach charger from destination!"
-                # raise Exception(err_msg)
+            self._return_to_charger()
 
         if self.DEBUG:
             print("Starting navigation...")
