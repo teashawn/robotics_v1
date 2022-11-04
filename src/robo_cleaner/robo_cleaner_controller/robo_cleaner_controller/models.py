@@ -60,7 +60,14 @@ class TILE_TYPE(IntEnum):
             TILE_TYPE.BIG_OBSTACLE,
             TILE_TYPE.OUT_OF_BOUND
         ]
-        #TILE_TYPE.UNKNOWN
+
+    def is_passable_and_explored(val):
+        return val not in [
+            TILE_TYPE.SMALL_OBSTACLE,
+            TILE_TYPE.BIG_OBSTACLE,
+            TILE_TYPE.OUT_OF_BOUND,
+            TILE_TYPE.UNKNOWN
+        ]
 
     def __str__(self):
         return self.name
