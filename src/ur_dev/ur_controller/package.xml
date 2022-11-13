@@ -12,6 +12,7 @@
   <depend>autologging</depend>
 
   <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>geometry_msgs</depend>
   <depend>urscript_interfaces</depend>
   <depend>urscript_common</depend>

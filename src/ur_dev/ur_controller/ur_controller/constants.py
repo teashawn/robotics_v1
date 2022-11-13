@@ -2378,6 +2378,13 @@ def Gripper():
 
 """
 
+FUNC_HEADER = """
+def f():
+"""
+
+FUNC_FOOTER = """
+end"""
+
 BOXES_R_COORDINATES = (2.224, -2.224, 0.000)
 
 BOX_COORDINATES = {

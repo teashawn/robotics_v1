@@ -7,7 +7,18 @@ logging.basicConfig(level=TRACE, stream=sys.stdout, format="\n%(funcName)s:%(mes
 def main(args=None):
     rclpy.init(args=args)
 
-    mind = bm.BoxMind(debug=True)
+    simulation = True
+    if len(sys.argv) >= 2:
+        # We target the real UR10e only if the simulation flag is explicitly lowered
+        simulation = not (sys.argv[1] == "simulation=false")
+
+    print(f"Creating BoxMind targeting {'simulator' if simulation else 'UR10e'}.")
+
+    mind = bm.BoxMind(
+        debug=True,
+        simulation=simulation
+    )
+
     mind.yo()
 
     # Shut down
