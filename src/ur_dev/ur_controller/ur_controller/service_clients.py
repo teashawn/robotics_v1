@@ -8,6 +8,7 @@ from std_msgs.msg import Empty
 from std_srvs.srv import Trigger
 from rclpy.node import Node
 import rclpy
+from visualization_msgs.msg import MarkerArray, Marker
 
 from ur_controller import constants
 
@@ -98,3 +99,21 @@ class GetEefAngleAxisClientAsync(Node):
         self.future = self.cli.call_async(self.req)
         rclpy.spin_until_future_complete(self, self.future)
         return self.future.result()
+
+class MarkerArrayPublisher(Node):
+    def __init__(self, debug : bool):
+        super().__init__('marker_array_publisher')
+        self.DEBUG = debug
+        self.publisher = self.create_publisher(MarkerArray, 'visualization_marker_array', 10)
+
+    def publish(self, msg : MarkerArray):
+        self.publisher.publish(msg)
+
+class MarkerPublisher(Node):
+    def __init__(self, debug : bool):
+        super().__init__('marker_publisher')
+        self.DEBUG = debug
+        self.publisher = self.create_publisher(Marker, 'visualization_marker', 10)
+
+    def publish(self, msg : Marker):
+        self.publisher.publish(msg)

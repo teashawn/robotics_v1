@@ -1,4 +1,4 @@
-from ur_controller import box_mind as bm
+from ur_controller import deus_ex_cubus as dec
 import rclpy
 from autologging import TRACE
 import logging, sys
@@ -12,16 +12,16 @@ def main(args=None):
         # We target the real UR10e only if the simulation flag is explicitly lowered
         simulation = not (sys.argv[1] == "simulation=false")
 
-    print(f"Creating BoxMind targeting {'simulator' if simulation else 'UR10e'}.")
+    print(f"Creating DeusExCubus targeting {'simulator' if simulation else 'UR10e'}.")
 
-    mind = bm.BoxMind(
+    deus = dec.DeusExCubus(
         debug=True,
         simulation=simulation
     )
 
-    mind.init()
+    deus.init()
 
-    mind.build_stairway_to_heaven()
+    deus.build_stairway_to_heaven()
     #mind.ho()
 
     # Shut down
