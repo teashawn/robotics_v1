@@ -19,7 +19,7 @@ def main(args=None):
         simulation=simulation
     )
 
-    deus.init()
+    #deus.init()
 
     deus.build_stairway_to_heaven()
     #mind.ho()

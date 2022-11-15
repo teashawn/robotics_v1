@@ -3,7 +3,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 
 GRIPPER_HEADER = """
 def Gripper():
-  set_tcp(p[0.0,0.0,0.1755,0.0,0.0,0.0])
+  set_tcp(p[0.0,0.0,0.248,0.0,0.0,0.0])
   set_payload(1.0,[-3.0E-4,4.0E-4,0.0785])
   step_count_c1ea570d_597a_4e27_b1f2_f1204aefbef2 = 0
   thread Step_Counter_Thread_c0f00319_af92_46b1_ade4_4c060a86bf18():
@@ -2406,7 +2406,7 @@ B_3_Z_MAX = 0.450
 B_4_Z_MAX = 0.450
 
 BOX_SIDE = 0.110
-BOX_SPACING = 0.0025
+BOX_SPACING = 0.01 #0.0025
 
 WAYPOINTS = {
     "home": models.Waypoint(-0.171, -0.682, 0.428, 0, 3.148, 0),
@@ -2438,44 +2438,82 @@ WAYPOINTS = {
     "b_4": models.Waypoint(0.940, -0.280, -0.080, *TABLE_B_ORIENTATION),
 }
 
-EDGE_OFFSET = abs(WAYPOINTS["b_1"].X - WAYPOINTS["box_1"].X)
+EDGE_OFFSET = BOX_SIDE #abs(WAYPOINTS["b_1"].X - WAYPOINTS["box_1"].X)
 
 # TODO: ensure we're within z_max
 PRE_PICK_WAYPOINTS = {k: models.Waypoint(
         WAYPOINTS[k].X,
         WAYPOINTS[k].Y,
-        WAYPOINTS[k].Z + BOX_SIDE,
+        WAYPOINTS[k].Z + (BOX_SIDE*2),
         *BOXES_ORIENTATION
     ) for k in [wk for wk in WAYPOINTS.keys() if "box" in wk]}
 
 DESTINATIONS = {
-    "box_1": models.Waypoint(
+    "box_10": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        WAYPOINTS["a_4"].Y + EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET),
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
-    "box_2": models.Waypoint(
+    "box_1": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
         (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
-    "box_3": models.Waypoint(
+    "box_4": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
         (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
-    "box_4": models.Waypoint(
+    "box_13": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
         (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
-    "box_5": models.Waypoint(
+    "box_7": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
         (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_2": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 2) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_12": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z,
+        *BOXES_ORIENTATION
+    ),
+    "box_5": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_8": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 2) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_11": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 3) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    
+
+    "box_3": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
@@ -2485,46 +2523,10 @@ DESTINATIONS = {
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 2) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
-    "box_7": models.Waypoint(
-        WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
-        WAYPOINTS["box_1"].Z,
-        *BOXES_ORIENTATION
-    ),
-    "box_8": models.Waypoint(
-        WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
-        WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
-        *BOXES_ORIENTATION
-    ),
     "box_9": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
         (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 2) + BOX_SPACING,
-        *BOXES_ORIENTATION
-    ),
-    "box_10": models.Waypoint(
-        WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
-        WAYPOINTS["box_1"].Z + (BOX_SIDE * 3) + BOX_SPACING,
-        *BOXES_ORIENTATION
-    ),
-    "box_11": models.Waypoint(
-        WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
-        WAYPOINTS["box_1"].Z + (BOX_SIDE * 4) + BOX_SPACING,
-        *BOXES_ORIENTATION
-    ),
-    "box_12": models.Waypoint(
-        WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
-        WAYPOINTS["box_1"].Z + (BOX_SIDE * 5) + BOX_SPACING,
-        *BOXES_ORIENTATION
-    ),
-    "box_13": models.Waypoint(
-        WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
-        WAYPOINTS["box_1"].Z + (BOX_SIDE * 6) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
     "box_14": models.Waypoint(
@@ -2538,6 +2540,6 @@ DESTINATIONS = {
 POST_PLACE_WAYPOINTS = {k: models.Waypoint(
         DESTINATIONS[k].X,
         DESTINATIONS[k].Y,
-        DESTINATIONS[k].Z + BOX_SIDE,
+        DESTINATIONS[k].Z + (BOX_SIDE*2),
         *BOXES_ORIENTATION
     ) for k in [wk for wk in WAYPOINTS.keys() if "box" in wk]}

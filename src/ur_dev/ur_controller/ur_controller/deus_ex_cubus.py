@@ -120,7 +120,13 @@ class DeusExCubus:
             if not self.SIMULATION:
                 self.command_client.send_gripper_request(constants.GRIPPER_CLOSE_COMMAND)
 
+            # move above box
+            self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
+
             print(f"Placing {box}.")
+
+            # move above box
+            self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
 
             # move to target position
             self.command_client.send_robot_request(constants.DESTINATIONS[box].as_movel())
@@ -132,7 +138,7 @@ class DeusExCubus:
             # move above box
             self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
 
-        print("Stariway to heaven ready.")
+        print("Stairway to heaven ready.")
 
     def ho(self):
         response = self.eef_angle_axis_client.send_request()
