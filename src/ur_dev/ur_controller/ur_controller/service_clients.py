@@ -5,6 +5,7 @@
 
 from urscript_interfaces.srv import UrScript, GetEefAngleAxis
 from std_msgs.msg import Empty
+from std_srvs.srv import Trigger
 from rclpy.node import Node
 import rclpy
 
@@ -23,12 +24,10 @@ class URScriptClientAsync(Node):
         self.DEBUG = debug
         self.cli = self.create_client(
             UrScript,
-            'urscript_service'
-        )
-        """
-        ,
+            'urscript_service',
             qos_profile=rclpy.qos.QoSProfile(depth=10)
-        """
+        )
+
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
         self.req = UrScript.Request()
@@ -44,21 +43,42 @@ class URScriptClientAsync(Node):
         self.future = self.cli.call_async(self.req)
         rclpy.spin_until_future_complete(self, self.future)
         return self.future.result()
+    
+class PowerOnClientAsync(Node):
+    def __init__(self, debug : bool):
+        super().__init__('power_on_client_async')
+        self.DEBUG = debug
+        self.cli = self.create_client(
+            Trigger,
+            'dashboard_client/power_on'
+        )
 
-    # def query(self):
-    #     response = self.send_request()
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        self.req = Trigger.Request()
 
-    #     if self.DEBUG:
-    #         # Log
-    #         success = response.success
-    #         error_reason = response.error_reason
-    #         state = response.initial_robot_state
-    #         robot_dir = models.ROBOT_DIRECTION(state.robot_dir)
-    #         initial_tile = state.robot_tile
-    #         self.get_logger().info(
-    #             f"\nSuccess: {success},\nError reason: {error_reason},\nDirection: {robot_dir},\nInitial tile: {initial_tile}\n"
-    #         )
-    #     return response
+    def send_request(self):
+        self.future = self.cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()
+
+class BrakeReleaseClientAsync(Node):
+    def __init__(self, debug : bool):
+        super().__init__('brake_release_async')
+        self.DEBUG = debug
+        self.cli = self.create_client(
+            Trigger,
+            'dashboard_client/brake_release'
+        )
+
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        self.req = Trigger.Request()
+
+    def send_request(self):
+        self.future = self.cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()
 
 class GetEefAngleAxisClientAsync(Node):
     def __init__(self, debug : bool):

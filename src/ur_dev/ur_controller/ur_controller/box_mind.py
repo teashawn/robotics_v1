@@ -1,8 +1,12 @@
-from ur_controller.service_clients import URScriptClientAsync, GetEefAngleAxisClientAsync
+from ur_controller.service_clients import URScriptClientAsync, GetEefAngleAxisClientAsync, PowerOnClientAsync, BrakeReleaseClientAsync
 from ur_controller import constants
 
-import time
+import os
 
+# DeusExCubus
+# OcadoTeaParty
+# CubeAddict
+# BoxMaster, MasterBox
 class BoxMind:
     def __init__(self, debug : bool = False, simulation : bool = True):
         self.DEBUG = debug
@@ -10,9 +14,30 @@ class BoxMind:
 
         self.command_client = URScriptClientAsync(debug=debug)
         self.eef_angle_axis_client = GetEefAngleAxisClientAsync(debug=debug)
+        self.power_on_client = PowerOnClientAsync(debug=debug)
+        self.brake_release_client = BrakeReleaseClientAsync(debug=debug)
 
-    def yo(self):
-        p = constants.WAYPOINTS["home"]
+    def init(self):
+        print("Powering on.")
+        response = self.power_on_client.send_request()
+        if not response.success:
+            print(f"Could not power on robot: {response.error_reason}")
+            os.exit(1)
+
+        print("Releasing brakes.")
+        response = self.brake_release_client.send_request()
+        if not response.success:
+            print(f"Could not release brakes: {response.error_reason}")
+            os.exit(1)
+
+        print("Going to home position.")
+        home = constants.WAYPOINTS["home"]
+        self.command_client.send_robot_request(home.as_movel())
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_ACTIVATE_COMMAND)
+
+    def build_stairway_to_heaven(self):
+        
         # movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
 
         BOXES = [
@@ -28,33 +53,37 @@ class BoxMind:
             "box_3"
         ]
 
-        time.sleep(5)
-
-        self.command_client.send_request(p.as_movel())
-        if self.SIMULATION:
-            self.command_client.send_request(constants.GRIPPER_ACTIVATE_COMMAND)
-
+        # move boxes
         for box in BOXES:
-            print(f"Picking {box}")
-            self.command_client.send_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
+            print(f"Picking {box}.")
 
-            if self.SIMULATION:
+            # move above box
+            self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
+
+            # open gripper
+            if not self.SIMULATION:
                 self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
 
-            self.command_client.send_request(constants.WAYPOINTS[box].as_movel())
+            # grab box
+            self.command_client.send_robot_request(constants.WAYPOINTS[box].as_movel())
 
-            if self.SIMULATION:
+            # close gripper
+            if not self.SIMULATION:
                 self.command_client.send_gripper_request(constants.GRIPPER_CLOSE_COMMAND)
 
-            print(f"Placing {box}")
-            self.command_client.send_request(constants.DESTINATIONS[box].as_movel())
+            print(f"Placing {box}.")
 
-            if self.SIMULATION:
+            # move to target position
+            self.command_client.send_robot_request(constants.DESTINATIONS[box].as_movel())
+
+            # open gripper
+            if not self.SIMULATION:
                 self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
 
-            self.command_client.send_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
+            # move above box
+            self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
 
-        print("Opa")
+        print("Stariway to heaven ready.")
 
     def ho(self):
         response = self.eef_angle_axis_client.send_request()

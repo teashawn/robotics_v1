@@ -2408,7 +2408,6 @@ BOX_SIDE = 0.110
 BOX_SPACING = 0.0025
 
 WAYPOINTS = {
-    "home_not": models.Waypoint(-1.570796327, -1.570796327, -1.570796327, -1.570796327, 1.570796327, 0),
     "home": models.Waypoint(-0.171, -0.682, 0.428, 0, 3.148, 0),
 
     "box_1": models.Waypoint(0.491, -0.134, -0.060, *BOXES_ORIENTATION),
@@ -2440,8 +2439,16 @@ WAYPOINTS = {
 
 EDGE_OFFSET = abs(WAYPOINTS["b_1"].X - WAYPOINTS["box_1"].X)
 
+# TODO: ensure we're within z_max
+PRE_PICK_WAYPOINTS = {k: models.Waypoint(
+        WAYPOINTS[k].X,
+        WAYPOINTS[k].Y,
+        WAYPOINTS[k].Z + BOX_SIDE,
+        *BOXES_ORIENTATION
+    ) for k in [wk for wk in WAYPOINTS.keys() if "box" in wk]}
+
 # TODO: generate with a function
-PRE_PICK_WAYPOINTS = {
+PRE_PICK_WAYPOINTS_OLD = {
     "box_1": models.Waypoint(
         WAYPOINTS["box_1"].X,
         WAYPOINTS["box_1"].Y,
@@ -2531,68 +2538,99 @@ PRE_PICK_WAYPOINTS = {
 DESTINATIONS = {
     "box_1": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        WAYPOINTS["a_4"].Y - EDGE_OFFSET,
+        WAYPOINTS["a_4"].Y + EDGE_OFFSET,
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
     "box_2": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
     "box_3": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 1) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
     "box_4": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
     "box_5": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
     "box_6": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 2) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 2) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
     "box_7": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
         WAYPOINTS["box_1"].Z,
         *BOXES_ORIENTATION
     ),
     "box_8": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 1) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
     "box_9": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 2) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
     "box_10": models.Waypoint(
         WAYPOINTS["a_4"].X - EDGE_OFFSET,
-        (WAYPOINTS["a_4"].Y - EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
         WAYPOINTS["box_1"].Z + (BOX_SIDE * 3) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_11": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 4) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_12": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 5) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_13": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 6) + BOX_SPACING,
+        *BOXES_ORIENTATION
+    ),
+    "box_14": models.Waypoint(
+        WAYPOINTS["a_4"].X - EDGE_OFFSET,
+        (WAYPOINTS["a_4"].Y + EDGE_OFFSET) + (BOX_SIDE * 3) + BOX_SPACING,
+        WAYPOINTS["box_1"].Z + (BOX_SIDE * 7) + BOX_SPACING,
         *BOXES_ORIENTATION
     ),
 }
 
+POST_PLACE_WAYPOINTS = {k: models.Waypoint(
+        DESTINATIONS[k].X,
+        DESTINATIONS[k].Y,
+        DESTINATIONS[k].Z + BOX_SIDE,
+        *BOXES_ORIENTATION
+    ) for k in [wk for wk in WAYPOINTS.keys() if "box" in wk]}
+
 # TODO: generate with a function
-POST_PLACE_WAYPOINTS = {
+POST_PLACE_WAYPOINTS_OLD = {
     "box_1": models.Waypoint(
         DESTINATIONS["box_1"].X,
         DESTINATIONS["box_1"].Y,
