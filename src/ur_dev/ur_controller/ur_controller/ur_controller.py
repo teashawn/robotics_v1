@@ -19,9 +19,11 @@ def main(args=None):
         simulation=simulation
     )
 
-    #deus.init()
+    if simulation:
+        deus.init()
 
     deus.build_stairway_to_heaven()
+    deus.build_tower_of_babylon()
     #mind.ho()
 
     # Shut down

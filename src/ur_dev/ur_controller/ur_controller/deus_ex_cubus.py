@@ -85,6 +85,41 @@ class DeusExCubus:
         # for m in self._get_scene_markers():
         #     self.marker_publisher.publish(m)
 
+    def _move_box(self, box):
+        print(f"Picking {box}.")
+
+        # move above box
+        self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
+
+        # open gripper
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
+
+        # grab box
+        self.command_client.send_robot_request(constants.WAYPOINTS[box].as_movel())
+
+        # close gripper
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_CLOSE_COMMAND)
+
+        # move above box
+        self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
+
+        print(f"Placing {box}.")
+
+        # move above box
+        self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
+
+        # move to target position
+        self.command_client.send_robot_request(constants.DESTINATIONS[box].as_movel())
+
+        # open gripper
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
+
+        # move above box
+        self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
+
     def build_stairway_to_heaven(self):
         
         # movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
@@ -104,41 +139,26 @@ class DeusExCubus:
 
         # move boxes
         for box in BOXES:
-            print(f"Picking {box}.")
-
-            # move above box
-            self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
-
-            # open gripper
-            if not self.SIMULATION:
-                self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
-
-            # grab box
-            self.command_client.send_robot_request(constants.WAYPOINTS[box].as_movel())
-
-            # close gripper
-            if not self.SIMULATION:
-                self.command_client.send_gripper_request(constants.GRIPPER_CLOSE_COMMAND)
-
-            # move above box
-            self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel())
-
-            print(f"Placing {box}.")
-
-            # move above box
-            self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
-
-            # move to target position
-            self.command_client.send_robot_request(constants.DESTINATIONS[box].as_movel())
-
-            # open gripper
-            if not self.SIMULATION:
-                self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
-
-            # move above box
-            self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel())
+            self._move_box(box)
 
         print("Stairway to heaven ready.")
+
+    def build_tower_of_babylon(self):
+        
+        # movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
+
+        BOXES = [
+            "box_3",
+            "box_6",
+            "box_14",
+            "box_9"
+        ]
+
+        # move boxes
+        for box in BOXES:
+            self._move_box(box)
+
+        print("Tower of Babylon ready.")
 
     def ho(self):
         response = self.eef_angle_axis_client.send_request()
