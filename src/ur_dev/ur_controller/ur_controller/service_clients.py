@@ -3,7 +3,7 @@
 # SENSOR_DATA, SERVICES_DEFAULT, SYSTEM_DEFAULT
 # https://docs.ros2.org/foxy/api/rclpy/api/qos.html
 
-from urscript_interfaces.srv import UrScript
+from urscript_interfaces.srv import UrScript, GetEefAngleAxis
 from std_msgs.msg import Empty
 from rclpy.node import Node
 import rclpy
@@ -12,6 +12,9 @@ from ur_controller import constants
 
 def wrap_urscript(payload : str) -> str:
     return f"{constants.FUNC_HEADER}{'  '}{'  '.join([l.strip() for l in payload.splitlines()])}{constants.FUNC_FOOTER}"
+
+def wrap_gripper_urscript(payload : str) -> str:
+    return f"{constants.GRIPPER_HEADER}{'  '}{'  '.join([l.strip() for l in payload.splitlines()])}{constants.FUNC_FOOTER}"
 
 class URScriptClientAsync(Node):
 
@@ -30,10 +33,14 @@ class URScriptClientAsync(Node):
             self.get_logger().info('service not available, waiting again...')
         self.req = UrScript.Request()
 
-    def send_request(self, payload : str):
+    def send_robot_request(self, payload : str):
         self.req.data = wrap_urscript(payload)
-        if self.DEBUG:
-            print(f"Sending URScript: {self.req.data}")
+        self.future = self.cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()
+
+    def send_gripper_request(self, payload : str):
+        self.req.data = wrap_gripper_urscript(payload)
         self.future = self.cli.call_async(self.req)
         rclpy.spin_until_future_complete(self, self.future)
         return self.future.result()
@@ -52,3 +59,22 @@ class URScriptClientAsync(Node):
     #             f"\nSuccess: {success},\nError reason: {error_reason},\nDirection: {robot_dir},\nInitial tile: {initial_tile}\n"
     #         )
     #     return response
+
+class GetEefAngleAxisClientAsync(Node):
+    def __init__(self, debug : bool):
+        super().__init__('get_eef_angle_axis_client_async')
+        self.DEBUG = debug
+        self.cli = self.create_client(
+            GetEefAngleAxis,
+            'get_eef_angle_axis'
+        )
+
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        self.req = GetEefAngleAxis.Request()
+
+    def send_request(self):
+        #self.req.request = Empty()
+        self.future = self.cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()

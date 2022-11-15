@@ -4,6 +4,12 @@ from autologging import TRACE
 import logging, sys
 logging.basicConfig(level=TRACE, stream=sys.stdout, format="\n%(funcName)s:%(message)s\n") # %(levelname)s:%(name)s:%(funcName)s:%(message)s
 
+"""
+TODO:
+
+- ask Zhivko if power on and break release commands are necessary from the controller
+"""
+
 def main(args=None):
     rclpy.init(args=args)
 
@@ -20,6 +26,7 @@ def main(args=None):
     )
 
     mind.yo()
+    mind.ho()
 
     # Shut down
     rclpy.shutdown()
