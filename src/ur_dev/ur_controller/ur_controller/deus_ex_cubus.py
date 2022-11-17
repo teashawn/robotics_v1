@@ -91,8 +91,6 @@ class DeusExCubus:
 
     def _create_scene(self):
         self.marker_array_publisher.publish(MarkerArray(markers=self._get_scene_markers()))
-        # for m in self._get_scene_markers():
-        #     self.marker_publisher.publish(m)
 
     def _move_box_packed(self, box):
         commands = []

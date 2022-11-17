@@ -19,8 +19,8 @@ def main(args=None):
         simulation=simulation,
         pack_commands=True,
         blending_radius=0.1,
-        acceleration=5.0,
-        velocity=10.0
+        acceleration=5.0, #5
+        velocity=10.0 #10
     )
 
     if simulation:
