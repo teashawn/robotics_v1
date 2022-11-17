@@ -2395,6 +2395,23 @@ BOXES_ORIENTATION = (2.224, -2.224, 0.000)
 TABLE_A_ORIENTATION = (0.000, 3.148, 0.000)
 TABLE_B_ORIENTATION = (2.224, -2.224, 0.000)
 
+"""
+name:
+- elbow_joint
+- shoulder_lift_joint
+- shoulder_pan_joint
+- wrist_1_joint
+- wrist_2_joint
+- wrist_3_joint
+position:
+- -1.1124069956826173
+- -2.056622801923825
+- -1.6248012547874149
+- -1.5430133229638594
+- 1.5643983243049278
+- -0.05400603639002366
+"""
+
 A_1_Z_MAX = 0.450
 A_2_Z_MAX = 0.800
 A_3_Z_MAX = 0.800
@@ -2406,7 +2423,7 @@ B_3_Z_MAX = 0.450
 B_4_Z_MAX = 0.450
 
 BOX_SIDE = 0.110
-BOX_SPACING = 0.01 #0.0025
+BOX_SPACING = 0.0025
 
 WAYPOINTS = {
     "home": models.Waypoint(-0.171, -0.682, 0.428, 0, 3.148, 0),

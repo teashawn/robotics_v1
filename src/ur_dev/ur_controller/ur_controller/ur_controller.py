@@ -16,14 +16,18 @@ def main(args=None):
 
     deus = dec.DeusExCubus(
         debug=True,
-        simulation=simulation
+        simulation=simulation,
+        pack_commands=True,
+        blending_radius=0.1,
+        acceleration=5.0,
+        velocity=10.0
     )
 
     if simulation:
         deus.init()
 
     deus.build_stairway_to_heaven()
-    deus.build_tower_of_babylon()
+    #deus.build_tower_of_babylon()
     #mind.ho()
 
     # Shut down

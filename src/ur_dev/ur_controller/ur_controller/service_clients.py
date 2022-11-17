@@ -6,7 +6,9 @@
 from urscript_interfaces.srv import UrScript, GetEefAngleAxis
 from std_msgs.msg import Empty
 from std_srvs.srv import Trigger
+from sensor_msgs.msg import JointState
 from rclpy.node import Node
+from rclpy.qos import QoSProfile
 import rclpy
 from visualization_msgs.msg import MarkerArray, Marker
 
@@ -117,3 +119,26 @@ class MarkerPublisher(Node):
 
     def publish(self, msg : Marker):
         self.publisher.publish(msg)
+
+class JointStatesSubscriber(Node):
+    def __init__(self, debug : bool, cb):
+        super().__init__('joint_states_subscriber')
+        self.DEBUG = debug
+
+        qos = QoSProfile(
+            reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
+            durability=rclpy.qos.DurabilityPolicy.VOLATILE,
+            history=rclpy.qos.HistoryPolicy.SYSTEM_DEFAULT,
+            depth=10
+        )
+
+        self.subscription = self.create_subscription(
+            JointState,
+            'joint_states',
+            cb,
+            qos)
+        self.subscription  # prevent unused variable warning
+
+    def listener_callback(self, msg):
+        print(msg.data)
+        self.get_logger().info('I heard: "%s"' % msg.data)

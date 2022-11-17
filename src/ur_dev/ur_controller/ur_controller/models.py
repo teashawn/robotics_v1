@@ -10,8 +10,8 @@ class Waypoint:
         self.RY = ry
         self.RZ = rz
 
-    def as_movel(self, a : float = 1.0, v : float = 1.0) -> str:
-        return f"movel(p[{self.X},{self.Y},{self.Z},{self.RX},{self.RY},{self.RZ}],a={a},v={v},t=0,r=0)"
+    def as_movel(self, a : float = 1.0, v : float = 1.0, r : float = 0.0) -> str:
+        return f"movel(p[{self.X},{self.Y},{self.Z},{self.RX},{self.RY},{self.RZ}],a={a},v={v},t=0,r={r})"
 
     def as_movej(self) -> str:
         # TODO: implement
