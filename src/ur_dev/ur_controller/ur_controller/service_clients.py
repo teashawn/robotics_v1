@@ -140,9 +140,10 @@ class JointStatesSubscriber(Node):
     #     qos)
     # self.subscription  # prevent unused variable warning
     """
-    def __init__(self, debug : bool, callback):
+    def __init__(self, debug : bool, callback, sleep : float = 0.1):
         super().__init__('joint_states_subscriber')
         self.DEBUG = debug
+        self.SLEEP = sleep
 
         self.callback = callback
         self.subscriber = util.get_joint_states_subscriber()
@@ -166,4 +167,4 @@ class JointStatesSubscriber(Node):
             self.callback(js)
             if self.cancel.is_set():
                 return
-            yield from asyncio.sleep(0.1)
+            yield from asyncio.sleep(self.SLEEP)

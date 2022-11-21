@@ -1,49 +1,109 @@
 from ur_controller.service_clients import URScriptClientAsync, GetEefAngleAxisClientAsync, PowerOnClientAsync, BrakeReleaseClientAsync, MarkerPublisher, MarkerArrayPublisher, JointStatesSubscriber
-from ur_controller import constants, models
+from ur_controller import constants, models, scene
 from visualization_msgs.msg import MarkerArray, Marker
 from builtin_interfaces.msg._time import Time
 from builtin_interfaces.msg._duration import Duration
 import rclpy
 
+from rich import box
+from rich.console import Console
+from rich.table import Table
+
 import os
 
-class DeusExCubus:
-    def __init__(self, debug : bool = False, simulation : bool = True, pack_commands : bool = False, blending_radius : float = 0.0, acceleration : float = 0.0, velocity : float = 0.0):
-        self.DEBUG = debug
-        self.SIMULATION = simulation
-        self.PACK_COMMANDS = pack_commands
-        self.BLENDING_RADIUS = blending_radius
-        self.ACCELERATION = acceleration
-        self.VELOCITY = velocity
-        self.JOINT_STATES = {}
+class DeusExCubusConfig:
+    def __init__(self):
+        self.debug : bool = False
+        self.simulation : bool = True
+        self.pack_commands : bool = False
+        self.blending_radius : float = 0.0
+        self.acceleration : float = 0.0
+        self.velocity : float = 0.0
+        self.box_spacing : float = 0.0 # meters
+        self.pre_pick_z_offset : float = 0.0 # boxes
+        self.use_ascii_art : bool = True
 
-        self.command_client = URScriptClientAsync(debug=debug)
-        self.eef_angle_axis_client = GetEefAngleAxisClientAsync(debug=debug)
-        self.power_on_client = PowerOnClientAsync(debug=debug)
-        self.brake_release_client = BrakeReleaseClientAsync(debug=debug)
-        self.marker_array_publisher = MarkerArrayPublisher(debug=debug)
-        self.marker_publisher = MarkerPublisher(debug=debug)
-        self.joint_states_subscriber = JointStatesSubscriber(debug=debug, callback=self._on_joint_states_changed)
+    def to_list(self):
+        return [
+            ["debug", self.debug],
+            ["simulation", self.simulation],
+            ["pack_commands", self.pack_commands],
+            ["blending_radius", self.blending_radius],
+            ["acceleration", self.acceleration],
+            ["velocity", self.velocity],
+            ["box_spacing", self.box_spacing],
+            ["pre_pick_z_offset", self.pre_pick_z_offset],
+            ["use_ascii_art", self.use_ascii_art]
+        ]
+
+    def print(self):
+        table = Table(title="DeusExCubus Config")
+        table.box = box.SQUARE
+
+        table.add_column("Parameter")
+        table.add_column("Value")
+
+        table.columns[0].style = "bold bright_blue"
+        table.columns[1].style = "bold green"
+
+        for t in self.to_list():
+            table.add_row(t[0], str(t[1]))
+
+        console = Console()
+        console.print(table)
+
+class DeusExCubus:
+    def __init__(self, config : DeusExCubusConfig):
+
+        # Parameters
+        self.DEBUG = config.debug
+        self.SIMULATION = config.simulation
+        self.PACK_COMMANDS = config.pack_commands
+        self.BLENDING_RADIUS = config.blending_radius
+        self.ACCELERATION = config.acceleration
+        self.VELOCITY = config.velocity
+        self.BOX_SPACING = config.box_spacing
+        self.PRE_PICK_Z_OFFSET_IN_BOXES = config.pre_pick_z_offset_in_boxes
+        
+        # State
+        self.JOINT_STATES = {}
+        self.WAYPOINTS = scene.get_waypoints(simulation=self.SIMULATION)
+        self.PRE_PICK_WAYPOINTS = scene.get_pre_pick_waypoints(self.WAYPOINTS, self.PRE_PICK_Z_OFFSET_IN_BOXES)
+        self.DESTINATIONS = scene.get_destinations(self.WAYPOINTS, config.box_spacing)
+        self.PRE_PLACE_WAYPOINTS = scene.get_pre_place_waypoints(self.DESTINATIONS, self.PRE_PICK_Z_OFFSET_IN_BOXES)
+
+        # Messaging clients
+        self.command_client = URScriptClientAsync(debug=config.debug)
+        self.eef_angle_axis_client = GetEefAngleAxisClientAsync(debug=config.debug)
+        self.power_on_client = PowerOnClientAsync(debug=config.debug)
+        self.brake_release_client = BrakeReleaseClientAsync(debug=config.debug)
+        self.marker_array_publisher = MarkerArrayPublisher(debug=config.debug)
+        self.marker_publisher = MarkerPublisher(debug=config.debug)
+        self.joint_states_subscriber = JointStatesSubscriber(
+            debug=config.debug,
+            callback=self._on_joint_states_changed,
+            sleep=0.1
+        )
 
     def init(self):
         if self.SIMULATION:
             print("Creating scene.")
             self._create_scene()
 
-        print("Powering on.")
-        response = self.power_on_client.send_request()
-        if not response.success:
-            print(f"Could not power on robot: {response.error_reason}")
-            os.exit(1)
+            print("Powering on.")
+            response = self.power_on_client.send_request()
+            if not response.success:
+                print(f"Could not power on robot: {response.error_reason}")
+                os.exit(1)
 
-        print("Releasing brakes.")
-        response = self.brake_release_client.send_request()
-        if not response.success:
-            print(f"Could not release brakes: {response.error_reason}")
-            os.exit(1)
+            print("Releasing brakes.")
+            response = self.brake_release_client.send_request()
+            if not response.success:
+                print(f"Could not release brakes: {response.error_reason}")
+                os.exit(1)
 
         print("Going to home position.")
-        home = constants.WAYPOINTS["home"]
+        home = self.WAYPOINTS["home"]
         self.command_client.send_robot_request(home.as_movel())
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_ACTIVATE_COMMAND)
@@ -88,7 +148,7 @@ class DeusExCubus:
     def _get_scene_markers(self):
         markers = []
 
-        for b in [constants.WAYPOINTS[k] for k in constants.WAYPOINTS.keys() if "box" in k]:
+        for b in [self.WAYPOINTS[k] for k in self.WAYPOINTS.keys() if "box" in k]:
             markers.append(self._get_box_marker(b, len(markers)))
 
         return markers
@@ -102,36 +162,36 @@ class DeusExCubus:
         print(f"Picking {box}.")
 
         # move above box
-        commands.append(constants.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # open gripper
         if not self.SIMULATION:
             commands.append(constants.GRIPPER_OPEN_COMMAND)
 
         # grab box
-        commands.append(constants.WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # close gripper
         if not self.SIMULATION:
             commands.append(constants.GRIPPER_CLOSE_COMMAND)
 
         # move above box
-        commands.append(constants.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         print(f"Placing {box}.")
 
         # move above box
-        commands.append(constants.POST_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # move to target position
-        commands.append(constants.DESTINATIONS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.DESTINATIONS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # open gripper
         if not self.SIMULATION:
             commands.append(constants.GRIPPER_OPEN_COMMAND)
 
         # move above box
-        commands.append(constants.POST_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         packed_command = "\n".join(commands)
 
@@ -144,36 +204,36 @@ class DeusExCubus:
         print(f"Picking {box}.")
 
         # move above box
-        self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # open gripper
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
 
         # grab box
-        self.command_client.send_robot_request(constants.WAYPOINTS[box].as_movel())
+        self.command_client.send_robot_request(self.WAYPOINTS[box].as_movel())
 
         # close gripper
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_CLOSE_COMMAND)
 
         # move above box
-        self.command_client.send_robot_request(constants.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         print(f"Placing {box}.")
 
         # move above box
-        self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # move to target position
-        self.command_client.send_robot_request(constants.DESTINATIONS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.DESTINATIONS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # open gripper
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
 
         # move above box
-        self.command_client.send_robot_request(constants.POST_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
     def _move_box(self, box):
         if self.PACK_COMMANDS:

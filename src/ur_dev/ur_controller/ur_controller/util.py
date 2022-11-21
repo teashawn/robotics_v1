@@ -2,7 +2,6 @@ import yaml
 import os
 import signal
 
-# Credit: https://github.com/Biomapas/B.ContinuousSubprocess
 import json
 import logging
 import subprocess
@@ -13,6 +12,7 @@ from typing import Generator, Optional, IO, AnyStr
 
 logger = logging.getLogger(__name__)
 
+# Credit: https://github.com/Biomapas/B.ContinuousSubprocess
 class ContinuousSubprocess:
 	"""
 	Creates a process to execute a wanted command and
