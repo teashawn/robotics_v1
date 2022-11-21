@@ -2394,23 +2394,6 @@ GRIPPER_CLOSE_COMMAND = "rq_close_and_wait()"
 TABLE_A_ORIENTATION = (0.000, 3.148, 0.000)
 TABLE_B_ORIENTATION = (2.224, -2.224, 0.000)
 
-"""
-name:
-- elbow_joint
-- shoulder_lift_joint
-- shoulder_pan_joint
-- wrist_1_joint
-- wrist_2_joint
-- wrist_3_joint
-position:
-- -1.1124069956826173
-- -2.056622801923825
-- -1.6248012547874149
-- -1.5430133229638594
-- 1.5643983243049278
-- -0.05400603639002366
-"""
-
 A_1_Z_MAX = 0.450
 A_2_Z_MAX = 0.800
 A_3_Z_MAX = 0.800
@@ -2435,13 +2418,13 @@ WAYPOINTS = {
     "box_6": models.Waypoint(0.690, 0.230, -0.060, *TABLE_B_ORIENTATION),
     "box_7": models.Waypoint(0.888, -0.144, -0.060, *TABLE_B_ORIENTATION),
     "box_8": models.Waypoint(0.900, 0.044, -0.060, *TABLE_B_ORIENTATION),
-    "box_9": models.Waypoint(0.887, 0.226, -0.060, *TABLE_B_ORIENTATION),
+    "box_9": models.Waypoint(0.491, 0.240, 0.050, *TABLE_B_ORIENTATION),#models.Waypoint(0.887, 0.226, -0.060, *TABLE_B_ORIENTATION),
 
     "box_10": models.Waypoint(0.491, -0.134, 0.050, *TABLE_B_ORIENTATION),
     "box_11": models.Waypoint(0.491, 0.240, 0.050, *TABLE_B_ORIENTATION),
     "box_12": models.Waypoint(0.701, 0.039, 0.050, *TABLE_B_ORIENTATION),
     "box_13": models.Waypoint(0.888, -0.144, 0.050, *TABLE_B_ORIENTATION),
-    "box_14": models.Waypoint(0.887, 0.226, 0.050, *TABLE_B_ORIENTATION),
+    "box_14": models.Waypoint(0.491, 0.240, 0.050, *TABLE_B_ORIENTATION),#models.Waypoint(0.887, 0.226, 0.050, *TABLE_B_ORIENTATION),
 
     "a_1": models.Waypoint(-0.400, -0.970, -0.080, *TABLE_A_ORIENTATION),
     "a_2": models.Waypoint(-0.400, -0.280, -0.080, *TABLE_A_ORIENTATION),
@@ -2556,6 +2539,6 @@ DESTINATIONS = {
 POST_PLACE_WAYPOINTS = {k: models.Waypoint(
         DESTINATIONS[k].X,
         DESTINATIONS[k].Y,
-        DESTINATIONS[k].Z + (BOX_SIDE*2),
+        DESTINATIONS[k].Z + (BOX_SIDE*0),#*2
         *TABLE_A_ORIENTATION
     ) for k in [wk for wk in WAYPOINTS.keys() if "box" in wk]}

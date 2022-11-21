@@ -2,7 +2,31 @@ from ur_controller import deus_ex_cubus as dec
 import rclpy
 from autologging import TRACE
 import logging, sys
-logging.basicConfig(level=TRACE, stream=sys.stdout, format="\n%(funcName)s:%(message)s\n") # %(levelname)s:%(name)s:%(funcName)s:%(message)s
+#logging.basicConfig(level=TRACE, stream=sys.stdout, format="\n%(funcName)s:%(message)s\n") # %(levelname)s:%(name)s:%(funcName)s:%(message)s
+
+"""
+TODO
+
+- use movej for placing boxes 14 and 9
+? generate constants file, based on confgurations from controller
+- patch unreachable box coordinates for simulation
+- extract box spacing as a parameter
+- consider running terminal topic echo and piping results to controller
+  as a workaround for subscribers not getting data
+
+- as plan B if gripper rotation doesn't work out, prepare alternative waypoints for
+  building stairway perpendicular to the current one
+
+- tower manouvre:
+    - TCP orientation stays with value for Table B
+    - wrist 2 from 90 to 0 degrees
+
+- tower manouvre plan b:
+    - pre-place waypoint in +X direction instead of +Z anf then place with a sideways motion,
+    maybe with a little bigger box spacing
+
+- lock joint states dict when reading or single read states?
+"""
 
 def main(args=None):
     rclpy.init(args=args)
@@ -19,8 +43,8 @@ def main(args=None):
         simulation=simulation,
         pack_commands=True,
         blending_radius=0.1,
-        acceleration=5.0, #5
-        velocity=10.0 #10
+        acceleration=1.0, #1.5?
+        velocity=1.0
     )
 
     if simulation:
@@ -28,9 +52,9 @@ def main(args=None):
 
     deus.build_stairway_to_heaven()
     #deus.build_tower_of_babylon()
-    #mind.ho()
 
     # Shut down
+    deus.destroy()
     rclpy.shutdown()
 
 if __name__ == '__main__':

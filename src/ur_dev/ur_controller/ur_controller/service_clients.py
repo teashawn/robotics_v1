@@ -12,7 +12,9 @@ from rclpy.qos import QoSProfile
 import rclpy
 from visualization_msgs.msg import MarkerArray, Marker
 
-from ur_controller import constants
+from ur_controller import constants, util
+import asyncio
+import threading
 
 def wrap_urscript(payload : str) -> str:
     return f"{constants.FUNC_HEADER}{'  '}{'  '.join([l.strip() for l in payload.splitlines()])}{constants.FUNC_FOOTER}"
@@ -121,24 +123,47 @@ class MarkerPublisher(Node):
         self.publisher.publish(msg)
 
 class JointStatesSubscriber(Node):
-    def __init__(self, debug : bool, cb):
+    """
+    https://stackoverflow.com/questions/26270681/can-an-asyncio-event-loop-run-in-the-background-without-suspending-the-python-in/56356487#56356487
+
+    # qos = QoSProfile(
+    #     reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
+    #     durability=rclpy.qos.DurabilityPolicy.VOLATILE,
+    #     history=rclpy.qos.HistoryPolicy.SYSTEM_DEFAULT,
+    #     depth=10
+    # )
+
+    # self.subscription = self.create_subscription(
+    #     JointState,
+    #     'joint_states',
+    #     cb,
+    #     qos)
+    # self.subscription  # prevent unused variable warning
+    """
+    def __init__(self, debug : bool, callback):
         super().__init__('joint_states_subscriber')
         self.DEBUG = debug
 
-        qos = QoSProfile(
-            reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
-            durability=rclpy.qos.DurabilityPolicy.VOLATILE,
-            history=rclpy.qos.HistoryPolicy.SYSTEM_DEFAULT,
-            depth=10
-        )
+        self.callback = callback
+        self.subscriber = util.get_joint_states_subscriber()
+        self.cancel = threading.Event()
+        loop = asyncio.get_event_loop()
+        self.subscriber_thread = threading.Thread(target=self._loop_in_thread, args=(loop,))
+        self.subscriber_thread.start()
 
-        self.subscription = self.create_subscription(
-            JointState,
-            'joint_states',
-            cb,
-            qos)
-        self.subscription  # prevent unused variable warning
+    def destroy(self):
+        self.cancel.set()
+        self.subscriber.terminate()
+        self.subscriber_thread.join()
 
-    def listener_callback(self, msg):
-        print(msg.data)
-        self.get_logger().info('I heard: "%s"' % msg.data)
+    def _loop_in_thread(self, loop):
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.read_joint_states())
+
+    @asyncio.coroutine
+    def read_joint_states(self):
+        for js in util.get_joint_states(self.subscriber):
+            self.callback(js)
+            if self.cancel.is_set():
+                return
+            yield from asyncio.sleep(0.1)

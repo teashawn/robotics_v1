@@ -15,6 +15,7 @@ class DeusExCubus:
         self.BLENDING_RADIUS = blending_radius
         self.ACCELERATION = acceleration
         self.VELOCITY = velocity
+        self.JOINT_STATES = {}
 
         self.command_client = URScriptClientAsync(debug=debug)
         self.eef_angle_axis_client = GetEefAngleAxisClientAsync(debug=debug)
@@ -22,7 +23,7 @@ class DeusExCubus:
         self.brake_release_client = BrakeReleaseClientAsync(debug=debug)
         self.marker_array_publisher = MarkerArrayPublisher(debug=debug)
         self.marker_publisher = MarkerPublisher(debug=debug)
-        self.joint_states_subscriber = JointStatesSubscriber(debug=debug, cb=self._on_joint_states_changed)
+        self.joint_states_subscriber = JointStatesSubscriber(debug=debug, callback=self._on_joint_states_changed)
 
     def init(self):
         if self.SIMULATION:
@@ -47,9 +48,12 @@ class DeusExCubus:
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_ACTIVATE_COMMAND)
 
+    def destroy(self):
+        self.joint_states_subscriber.destroy()
+
     def _on_joint_states_changed(self, msg):
-        # name, position
-        print(f"Received joint states: {msg}")
+        for i, n in enumerate(msg["name"]):
+            self.JOINT_STATES[n] = msg["position"][i]
 
     def _get_box_marker(self, b : models.Waypoint, id : int) -> Marker:
         # http://docs.ros.org/en/noetic/api/visualization_msgs/html/msg/Marker.html
