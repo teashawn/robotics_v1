@@ -55,9 +55,7 @@ def main(args=None):
     print(f"Creating DeusExCubus targeting {'simulator' if simulation else 'UR10e'}.")
 
     deus = dec.DeusExCubus(config)
-
-    if simulation:
-        deus.init()
+    deus.init()
 
     deus.build_stairway_to_heaven()
     #deus.build_tower_of_babylon()
