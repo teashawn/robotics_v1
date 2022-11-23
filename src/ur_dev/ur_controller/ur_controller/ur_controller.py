@@ -1,18 +1,11 @@
 from ur_controller import deus_ex_cubus as dec
+from ur_controller import egg
 import rclpy
 import sys
 
 """
 TODO
 
-+ generate constants file, based on confgurations from controller
-+ patch unreachable box coordinates for simulation
-+ extract box spacing as a parameter
-+ consider running terminal topic echo and piping results to controller
-  as a workaround for subscribers not getting data
-+ make ascii art configurable
-
-- use movej for placing boxes 14 and 9
 - as plan B if gripper rotation doesn't work out, prepare alternative waypoints for
   building stairway perpendicular to the current one
 
@@ -24,18 +17,26 @@ TODO
     - pre-place waypoint in +X direction instead of +Z anf then place with a sideways motion,
     maybe with a little bigger box spacing
 
-- lock joint states dict when reading or single read states?
 - ensure last batched movel command has blend radius = 0
 - check how box spacing is used
+- add easter egg with UR10e terminal animation
 """
 
 def main(args=None):
     rclpy.init(args=args)
 
     simulation = True
+    easter_egg = False
+
     if len(sys.argv) >= 2:
-        # We target the real UR10e only if the simulation flag is explicitly lowered
-        simulation = not (sys.argv[1] == "simulation=false")
+        for arg in sys.argv[1:]:
+            if arg == "simulation=false":
+                simulation = False
+            elif arg == "east=eregg":
+                easter_egg = True
+
+    if easter_egg:
+        egg.hatch()
 
     config = dec.DeusExCubusConfig()
     config.debug=True
@@ -44,7 +45,7 @@ def main(args=None):
     config.blending_radius=0.1
     config.acceleration=1.0 #1.5?
     config.velocity=1.0
-    config.box_spacing = 0.0025 # meters
+    config.box_spacing = 0.003 # meters
     config.pre_pick_z_offset = 2.0
     config.use_ascii_art = True
 
@@ -52,9 +53,7 @@ def main(args=None):
         from ur_controller import banner
         
         banner.print_banner()
-        print("\n\n")
         banner.print_panel("A final project for Ocado Robotics Accelerator 2022")
-        print("\n\n")
 
     config.print()
 

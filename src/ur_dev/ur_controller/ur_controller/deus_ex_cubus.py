@@ -421,7 +421,7 @@ class DeusExCubus:
         input()
         # move sideways (X-axis) next to final box position
         waypoint = deepcopy(self.DESTINATIONS[box])
-        waypoint.X -= constants.BOX_SIDE * 2
+        waypoint.X += constants.BOX_SIDE * 2
         waypoint.Z += self.BOX_SPACING * 2
         waypoint.RX = eef_angle_axis.x
         waypoint.RY = eef_angle_axis.y

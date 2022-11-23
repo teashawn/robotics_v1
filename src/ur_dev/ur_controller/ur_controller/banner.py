@@ -24,7 +24,9 @@ def print_ocado(text):
     print(ocado(text))
 
 def print_panel(text):
+    print("\n\n")
     print(Panel(Align(text, align="center", vertical="middle"), width=64, height=10, title="DeusExCubus", subtitle="Author: Tihomir Petkov"))
+    print("\n\n")
 
 def get_star(width : int):
     line1 = "\\v/"
