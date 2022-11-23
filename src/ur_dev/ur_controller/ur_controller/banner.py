@@ -4,8 +4,6 @@ from pyfiglet import figlet_format
 from random import choice, randint
 from rich import print
 from rich.highlighter import Highlighter
-from rich.style import Style
-from rich.color import Color
 from rich.panel import Panel
 from rich.align import Align
 

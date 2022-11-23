@@ -1,26 +1,6 @@
 from ur_controller import deus_ex_cubus as dec
-from ur_controller import egg
 import rclpy
 import sys
-
-"""
-TODO
-
-- as plan B if gripper rotation doesn't work out, prepare alternative waypoints for
-  building stairway perpendicular to the current one
-
-- tower manouvre:
-    - TCP orientation stays with value for Table B
-    - wrist 2 from 90 to 0 degrees
-
-- tower manouvre plan b:
-    - pre-place waypoint in +X direction instead of +Z anf then place with a sideways motion,
-    maybe with a little bigger box spacing
-
-- ensure last batched movel command has blend radius = 0
-- check how box spacing is used
-- add easter egg with UR10e terminal animation
-"""
 
 def main(args=None):
     rclpy.init(args=args)
@@ -36,6 +16,7 @@ def main(args=None):
                 easter_egg = True
 
     if easter_egg:
+        from ur_controller import egg
         egg.hatch()
 
     config = dec.DeusExCubusConfig()
@@ -43,15 +24,15 @@ def main(args=None):
     config.simulation=simulation
     config.pack_commands=True
     config.blending_radius=0.1
-    config.acceleration=1.0 #1.5?
+    config.acceleration=1.0
     config.velocity=1.0
     config.box_spacing = 0.003 # meters
     config.pre_pick_z_offset = 2.0
     config.use_ascii_art = True
+    config.placing_speed_factors = [1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.1]
 
     if config.use_ascii_art:
         from ur_controller import banner
-        
         banner.print_banner()
         banner.print_panel("A final project for Ocado Robotics Accelerator 2022")
 
@@ -62,7 +43,7 @@ def main(args=None):
     deus = dec.DeusExCubus(config)
     deus.init()
 
-    #deus.build_stairway_to_heaven()
+    deus.build_stairway_to_heaven()
     deus.build_tower_of_babylon()
 
     # Shut down

@@ -124,8 +124,7 @@ class MarkerPublisher(Node):
 
 class JointStatesSubscriber(Node):
     """
-    https://stackoverflow.com/questions/26270681/can-an-asyncio-event-loop-run-in-the-background-without-suspending-the-python-in/56356487#56356487
-
+    Canonical subsciption didn't work for some reason - I was not gettgin any updates in the controller.
     # qos = QoSProfile(
     #     reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
     #     durability=rclpy.qos.DurabilityPolicy.VOLATILE,

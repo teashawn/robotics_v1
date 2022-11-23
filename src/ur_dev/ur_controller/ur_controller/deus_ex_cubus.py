@@ -1,12 +1,11 @@
 from ur_controller.service_clients import URScriptClientAsync, GetEefAngleAxisClientAsync, PowerOnClientAsync, BrakeReleaseClientAsync, MarkerPublisher, MarkerArrayPublisher, JointStatesSubscriber
 from ur_controller import constants, models, scene, util
 from visualization_msgs.msg import MarkerArray, Marker
-from builtin_interfaces.msg._time import Time
-from builtin_interfaces.msg._duration import Duration
-import rclpy
+
 from threading import Lock
 from math import degrees, radians
 from copy import deepcopy
+from typing import List
 
 from rich import box
 from rich.console import Console
@@ -25,6 +24,7 @@ class DeusExCubusConfig:
         self.box_spacing : float = 0.0 # meters
         self.pre_pick_z_offset : float = 0.0 # boxes
         self.use_ascii_art : bool = True
+        self.placing_speed_factors : List[float] = [] # speed factors per box Z-level
 
     def to_list(self):
         return [
@@ -36,7 +36,8 @@ class DeusExCubusConfig:
             ["velocity", self.velocity],
             ["box_spacing", self.box_spacing],
             ["pre_pick_z_offset", self.pre_pick_z_offset],
-            ["use_ascii_art", self.use_ascii_art]
+            ["use_ascii_art", self.use_ascii_art],
+            ["placing_speed_factors", self.placing_speed_factors]
         ]
 
     def print(self):
@@ -67,6 +68,7 @@ class DeusExCubus:
         self.VELOCITY = config.velocity
         self.BOX_SPACING = config.box_spacing
         self.PRE_PICK_Z_OFFSET = config.pre_pick_z_offset
+        self.PLACING_SPEED_FACTORS = config.placing_speed_factors
         
         # State
         self.JOINT_STATES = {}
@@ -83,6 +85,9 @@ class DeusExCubus:
         self.brake_release_client = BrakeReleaseClientAsync(debug=config.debug)
         self.marker_array_publisher = MarkerArrayPublisher(debug=config.debug)
         self.marker_publisher = MarkerPublisher(debug=config.debug)
+
+        # Subscriber is commented out because it is receiving stale data for some reason
+        self.joint_states_subscriber = None
         # self.joint_states_subscriber = JointStatesSubscriber(
         #     debug=config.debug,
         #     callback=self._on_joint_states_changed,
@@ -115,7 +120,8 @@ class DeusExCubus:
             self.command_client.send_gripper_request(constants.GRIPPER_ACTIVATE_COMMAND)
 
     def destroy(self):
-        self.joint_states_subscriber.destroy()
+        if self.joint_states_subscriber:
+            self.joint_states_subscriber.destroy()
 
     def _on_joint_states_changed(self, msg):
         self.JOINT_STATES_LOCK.acquire()
@@ -166,7 +172,7 @@ class DeusExCubus:
     def _create_scene(self):
         self.marker_array_publisher.publish(MarkerArray(markers=self._get_scene_markers()))
 
-    def _move_box_packed(self, box):
+    def _move_box_packed(self, box, placing_speed_factor):
         commands = []
 
         print(f"Picking {box}.")
@@ -179,7 +185,7 @@ class DeusExCubus:
             commands.append(constants.GRIPPER_OPEN_COMMAND)
 
         # grab box
-        commands.append(self.WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=0))
 
         # close gripper
         if not self.SIMULATION:
@@ -194,14 +200,14 @@ class DeusExCubus:
         commands.append(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # move to target position
-        commands.append(self.DESTINATIONS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.DESTINATIONS[box].as_movel(a=self.ACCELERATION*placing_speed_factor, v=self.VELOCITY*placing_speed_factor, r=0))
 
         # open gripper
         if not self.SIMULATION:
             commands.append(constants.GRIPPER_OPEN_COMMAND)
 
         # move above box
-        commands.append(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        commands.append(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION*placing_speed_factor, v=self.VELOCITY*placing_speed_factor, r=self.BLENDING_RADIUS))
 
         packed_command = "\n".join(commands)
 
@@ -210,7 +216,7 @@ class DeusExCubus:
         else:
             self.command_client.send_robot_request(packed_command)
 
-    def _move_box_unpacked(self, box):
+    def _move_box_unpacked(self, box, placing_speed_factor):
         print(f"Picking {box}.")
 
         # move above box
@@ -236,20 +242,20 @@ class DeusExCubus:
         self.command_client.send_robot_request(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
 
         # move to target position
-        self.command_client.send_robot_request(self.DESTINATIONS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.DESTINATIONS[box].as_movel(a=self.ACCELERATION*placing_speed_factor, v=self.VELOCITY*placing_speed_factor, r=0))
 
         # open gripper
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
 
         # move above box
-        self.command_client.send_robot_request(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+        self.command_client.send_robot_request(self.PRE_PLACE_WAYPOINTS[box].as_movel(a=self.ACCELERATION*placing_speed_factor, v=self.VELOCITY*placing_speed_factor, r=self.BLENDING_RADIUS))
 
-    def _move_box(self, box):
+    def _move_box(self, box, placing_speed_factor):
         if self.PACK_COMMANDS:
-            self._move_box_packed(box)
+            self._move_box_packed(box, placing_speed_factor)
         else:
-            self._move_box_unpacked(box)
+            self._move_box_unpacked(box, placing_speed_factor)
 
     def _get_joint_states(self):
         p = util.get_joint_states_subscriber()
@@ -368,10 +374,6 @@ class DeusExCubus:
         waypoint.RY = eef_angle_axis.y
         waypoint.RZ = eef_angle_axis.z
 
-        print(f"X: {degrees(waypoint.X)}")
-        print(f"Y: {degrees(waypoint.Y)}")
-        print(f"Z: {degrees(waypoint.Z)}")
-
         # move at half speed and no blending
         self.command_client.send_robot_request(waypoint.as_movel(a=self.ACCELERATION/2.0, v=self.VELOCITY/2.0, r=0))
 
@@ -455,24 +457,7 @@ class DeusExCubus:
         # move at half speed
         self.command_client.send_robot_request(f"movej({joint_values},a={self.ACCELERATION/2.0},v={self.VELOCITY/2.0})")
 
-
-        # home position
-        # {'elbow_joint': -1.3455162144440802, 'shoulder_lift_joint': -1.8264590070761368, 'shoulder_pan_joint': -1.444100031683746, 'wrist_1_joint': -1.4677006886040482, 'wrist_2_joint': 1.573968083298984, 'wrist_3_joint': -0.3589956902247362}
-
-
-        # movej to rotate gripper (self.JOINT_STATES + rotation math)
-        # get eef_angle_axis_client coordinates
-        # movel to destination with new angle-axis orientation from previous call, but keep z
-        # move down by -z
-        # open gripper
-        # slow down!
-        # move back
-        # profit with original angle-axis orientation for table B
-
     def build_stairway_to_heaven(self):
-        
-        # movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
-
         BOXES = [
             "box_10",
             "box_1",
@@ -486,18 +471,26 @@ class DeusExCubus:
             "box_11"
         ]
 
+        BOX_Z_LEVELS = {
+            "box_10": 1,
+            "box_1": 1,
+            "box_4": 2,
+            "box_13": 1,
+            "box_7": 2,
+            "box_2": 3,
+            "box_12": 1,
+            "box_5": 2,
+            "box_8": 3,
+            "box_11": 4
+        }
+
         # move boxes
         for box in BOXES:
-            self._move_box(box)
+            self._move_box(box, self.PLACING_SPEED_FACTORS[BOX_Z_LEVELS[box]-1])
 
         print("Stairway to heaven ready.")
 
     def build_tower_of_babylon(self):
-        
-        # TODO: reflect these changes in _move_box_sideways
-        # slow down
-        self.VELOCITY /= 1
-        self.ACCELERATION /= 1
 
         # safely in reach with approach from above
         BOXES = [
@@ -505,18 +498,24 @@ class DeusExCubus:
             "box_6"
         ]
 
-        # move boxes
-        for box in BOXES:
-            self._move_box(box)
-
-        # unreachable from above
-        BOXES = [
-            "box_14",
-            "box_9"
-        ]
+        BOX_Z_LEVELS = {
+            "box_3": 5,
+            "box_6": 6,
+        }
 
         # move boxes
         for box in BOXES:
-            self._move_box_sideways(box)
+            self._move_box(box, self.PLACING_SPEED_FACTORS[BOX_Z_LEVELS[box]-1])
+
+        # TODO: figure out `movej` problem with last 2 boxes
+        # # unreachable from above
+        # BOXES = [
+        #     "box_14",
+        #     "box_9"
+        # ]
+
+        # # move boxes
+        # for box in BOXES:
+        #     self._move_box_sideways(box)
 
         print("Tower of Babylon ready.")
