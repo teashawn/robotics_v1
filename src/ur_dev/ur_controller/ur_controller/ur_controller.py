@@ -25,6 +25,8 @@ TODO
     maybe with a little bigger box spacing
 
 - lock joint states dict when reading or single read states?
+- ensure last batched movel command has blend radius = 0
+- check how box spacing is used
 """
 
 def main(args=None):
@@ -43,12 +45,16 @@ def main(args=None):
     config.acceleration=1.0 #1.5?
     config.velocity=1.0
     config.box_spacing = 0.0025 # meters
-    config.pre_pick_z_offset_in_boxes = 2.0
+    config.pre_pick_z_offset = 2.0
     config.use_ascii_art = True
 
     if config.use_ascii_art:
         from ur_controller import banner
+        
         banner.print_banner()
+        print("\n\n")
+        banner.print_panel("A final project for Ocado Robotics Accelerator 2022")
+        print("\n\n")
 
     config.print()
 
@@ -57,8 +63,8 @@ def main(args=None):
     deus = dec.DeusExCubus(config)
     deus.init()
 
-    deus.build_stairway_to_heaven()
-    #deus.build_tower_of_babylon()
+    #deus.build_stairway_to_heaven()
+    deus.build_tower_of_babylon()
 
     # Shut down
     deus.destroy()

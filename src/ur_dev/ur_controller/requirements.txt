@@ -2,3 +2,4 @@ pyyaml
 rich
 ascii_magic
 pyfiglet
+asciimatics

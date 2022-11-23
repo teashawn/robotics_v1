@@ -13,6 +13,8 @@ class Waypoint:
     def as_movel(self, a : float = 1.0, v : float = 1.0, r : float = 0.0) -> str:
         return f"movel(p[{self.X},{self.Y},{self.Z},{self.RX},{self.RY},{self.RZ}],a={a},v={v},t=0,r={r})"
 
-    def as_movej(self) -> str:
-        # TODO: implement
-        return f"movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
+    def __repr__(self):
+        return f"X: {self.X}, Y: {self.Y}, Z: {self.Z}, RX: {self.RX}, RY: {self.RY}, RZ: {self.RZ}"
+
+    def __str__(self):
+        return self.__repr__()

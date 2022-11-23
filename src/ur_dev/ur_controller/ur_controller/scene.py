@@ -46,11 +46,11 @@ def get_waypoints(simulation : bool = True):
     else:
         return _get_real_waypoints()
 
-def get_pre_pick_waypoints(waypoints, z_offset_in_boxes : int = 2):
+def get_pre_pick_waypoints(waypoints, z_offset : int = 2):
     return {k: models.Waypoint(
             waypoints[k].X,
             waypoints[k].Y,
-            waypoints[k].Z + (constants.BOX_SIDE*z_offset_in_boxes),
+            waypoints[k].Z + (constants.BOX_SIDE*z_offset),
             *constants.TABLE_B_ORIENTATION
         ) for k in [wk for wk in waypoints.keys() if "box" in wk]}
 
@@ -144,10 +144,10 @@ def get_destinations(waypoints, box_spacing : float):
     )
 }
 
-def get_pre_place_waypoints(destinations, z_offset_in_boxes : int = 2):
+def get_pre_place_waypoints(destinations, z_offset : int = 2):
     return {k: models.Waypoint(
         destinations[k].X,
         destinations[k].Y,
-        destinations[k].Z + (constants.BOX_SIDE*z_offset_in_boxes),
+        destinations[k].Z + (constants.BOX_SIDE*z_offset),
         *constants.TABLE_A_ORIENTATION
     ) for k in [wk for wk in destinations.keys() if "box" in wk]}

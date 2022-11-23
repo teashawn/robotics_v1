@@ -1,9 +1,12 @@
 from ur_controller.service_clients import URScriptClientAsync, GetEefAngleAxisClientAsync, PowerOnClientAsync, BrakeReleaseClientAsync, MarkerPublisher, MarkerArrayPublisher, JointStatesSubscriber
-from ur_controller import constants, models, scene
+from ur_controller import constants, models, scene, util
 from visualization_msgs.msg import MarkerArray, Marker
 from builtin_interfaces.msg._time import Time
 from builtin_interfaces.msg._duration import Duration
 import rclpy
+from threading import Lock
+from math import degrees, radians
+from copy import deepcopy
 
 from rich import box
 from rich.console import Console
@@ -37,7 +40,7 @@ class DeusExCubusConfig:
         ]
 
     def print(self):
-        table = Table(title="DeusExCubus Config")
+        table = Table(title="DeusExCubus Config", width=64)
         table.box = box.SQUARE
 
         table.add_column("Parameter")
@@ -63,14 +66,15 @@ class DeusExCubus:
         self.ACCELERATION = config.acceleration
         self.VELOCITY = config.velocity
         self.BOX_SPACING = config.box_spacing
-        self.PRE_PICK_Z_OFFSET_IN_BOXES = config.pre_pick_z_offset_in_boxes
+        self.PRE_PICK_Z_OFFSET = config.pre_pick_z_offset
         
         # State
         self.JOINT_STATES = {}
+        self.JOINT_STATES_LOCK = Lock()
         self.WAYPOINTS = scene.get_waypoints(simulation=self.SIMULATION)
-        self.PRE_PICK_WAYPOINTS = scene.get_pre_pick_waypoints(self.WAYPOINTS, self.PRE_PICK_Z_OFFSET_IN_BOXES)
+        self.PRE_PICK_WAYPOINTS = scene.get_pre_pick_waypoints(self.WAYPOINTS, self.PRE_PICK_Z_OFFSET)
         self.DESTINATIONS = scene.get_destinations(self.WAYPOINTS, config.box_spacing)
-        self.PRE_PLACE_WAYPOINTS = scene.get_pre_place_waypoints(self.DESTINATIONS, self.PRE_PICK_Z_OFFSET_IN_BOXES)
+        self.PRE_PLACE_WAYPOINTS = scene.get_pre_place_waypoints(self.DESTINATIONS, self.PRE_PICK_Z_OFFSET)
 
         # Messaging clients
         self.command_client = URScriptClientAsync(debug=config.debug)
@@ -79,11 +83,11 @@ class DeusExCubus:
         self.brake_release_client = BrakeReleaseClientAsync(debug=config.debug)
         self.marker_array_publisher = MarkerArrayPublisher(debug=config.debug)
         self.marker_publisher = MarkerPublisher(debug=config.debug)
-        self.joint_states_subscriber = JointStatesSubscriber(
-            debug=config.debug,
-            callback=self._on_joint_states_changed,
-            sleep=0.1
-        )
+        # self.joint_states_subscriber = JointStatesSubscriber(
+        #     debug=config.debug,
+        #     callback=self._on_joint_states_changed,
+        #     sleep=0.1
+        # )
 
     def init(self):
         if self.SIMULATION:
@@ -103,8 +107,10 @@ class DeusExCubus:
                 os.exit(1)
 
         print("Going to home position.")
+        self.command_client.send_robot_request(f"movej({constants.HOME_POSITION_JOIN_STATES},a={self.ACCELERATION},v={self.VELOCITY})")
         home = self.WAYPOINTS["home"]
         self.command_client.send_robot_request(home.as_movel())
+
         if not self.SIMULATION:
             self.command_client.send_gripper_request(constants.GRIPPER_ACTIVATE_COMMAND)
 
@@ -112,8 +118,12 @@ class DeusExCubus:
         self.joint_states_subscriber.destroy()
 
     def _on_joint_states_changed(self, msg):
+        self.JOINT_STATES_LOCK.acquire()
+
         for i, n in enumerate(msg["name"]):
             self.JOINT_STATES[n] = msg["position"][i]
+
+        self.JOINT_STATES_LOCK.release()
 
     def _get_box_marker(self, b : models.Waypoint, id : int) -> Marker:
         # http://docs.ros.org/en/noetic/api/visualization_msgs/html/msg/Marker.html
@@ -241,6 +251,224 @@ class DeusExCubus:
         else:
             self._move_box_unpacked(box)
 
+    def _get_joint_states(self):
+        p = util.get_joint_states_subscriber()
+        states = util.get_joint_states_single(p)
+
+        result = {}
+
+        for i, n in enumerate(states["name"]):
+            result[n] = states["position"][i]
+
+        return result
+
+    def _move_box_sideways(self, box):
+        print(f"Picking {box}.")
+
+        #################################################################
+        # Step 1
+        #################################################################
+        print("-----> Step 1 [move above box]")
+        #input()
+        # move above box
+        self.command_client.send_robot_request(self.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+
+        #################################################################
+        # Step 2
+        #################################################################
+        print("-----> Step 2 [open gripper]")
+        #input()
+        # open gripper
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
+
+        #################################################################
+        # Step 3
+        #################################################################
+        print("-----> Step 3 [grab box]")
+        #input()
+        # grab box
+        self.command_client.send_robot_request(self.WAYPOINTS[box].as_movel())
+
+        #################################################################
+        # Step 4
+        #################################################################
+        print("-----> Step 4 [close gripper]")
+        input()
+        # close gripper
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_CLOSE_COMMAND)
+
+        #################################################################
+        # Step 5
+        #################################################################
+        print("-----> Step 5 [move above box]")
+        input()
+        # move above box
+        self.command_client.send_robot_request(self.PRE_PICK_WAYPOINTS[box].as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=self.BLENDING_RADIUS))
+
+        print(f"Placing {box}.")
+
+        #################################################################
+        # Step 6
+        #################################################################
+        print("-----> Step 6 [move sideways (X-axis) next to destination]")
+        input()
+        # move sideways (X-axis) next to final box position
+        waypoint = deepcopy(self.DESTINATIONS[box])
+        waypoint.X += constants.BOX_SIDE * 2
+        waypoint.Z += self.BOX_SPACING * 2
+        waypoint.RX, waypoint.RY, waypoint.RZ = deepcopy(constants.TABLE_B_ORIENTATION)
+
+        print(f"X: {waypoint.X}")
+        print(f"Y: {waypoint.Y}")
+        print(f"Z: {waypoint.Z}")
+
+        # no blending
+        self.command_client.send_robot_request(waypoint.as_movel(a=self.ACCELERATION, v=self.VELOCITY, r=0))
+
+        #################################################################
+        # Step 7
+        #################################################################
+        print("-----> Step 7 [rotate wrist_2 -90 degrees]")
+        input()
+        # get current joint states
+        # self.JOINT_STATES_LOCK.acquire()
+        # joint_states = deepcopy(self.JOINT_STATES)
+        # self.JOINT_STATES_LOCK.release()
+        joint_states = self._get_joint_states()
+
+        # rotate wrist_2 -90 degrees
+        wrist_2_original = deepcopy(joint_states["wrist_2_joint"])
+        joint_states["wrist_2_joint"] = radians(degrees(wrist_2_original) - 90)
+        joint_values = [
+            joint_states["shoulder_pan_joint"],
+            joint_states["shoulder_lift_joint"],
+            joint_states["elbow_joint"],
+            joint_states["wrist_1_joint"],
+            joint_states["wrist_2_joint"],
+            joint_states["wrist_3_joint"]
+        ]
+
+        # move at half speed
+        self.command_client.send_robot_request(f"movej({joint_values},a={self.ACCELERATION/2.0},v={self.VELOCITY/2.0})")
+
+        #################################################################
+        # Step 8
+        #################################################################
+        print("-----> Step 8 [move a little above destination]")
+        input()
+        # get changed TCP angle-axis rotation
+        eef_angle_axis = self.eef_angle_axis_client.send_request().angle_axis
+
+        # move a little above target position
+        waypoint = deepcopy(self.DESTINATIONS[box])
+        waypoint.Z += self.BOX_SPACING * 2
+        waypoint.RX = eef_angle_axis.x
+        waypoint.RY = eef_angle_axis.y
+        waypoint.RZ = eef_angle_axis.z
+
+        print(f"X: {degrees(waypoint.X)}")
+        print(f"Y: {degrees(waypoint.Y)}")
+        print(f"Z: {degrees(waypoint.Z)}")
+
+        # move at half speed and no blending
+        self.command_client.send_robot_request(waypoint.as_movel(a=self.ACCELERATION/2.0, v=self.VELOCITY/2.0, r=0))
+
+        #################################################################
+        # Step 9
+        #################################################################
+        print("-----> Step 9 [move to destination]")
+        input()
+        # move to target position
+        waypoint = deepcopy(self.DESTINATIONS[box])
+        waypoint.RX = eef_angle_axis.x
+        waypoint.RY = eef_angle_axis.y
+        waypoint.RZ = eef_angle_axis.z
+        # move at quarter speed and no blending
+        self.command_client.send_robot_request(waypoint.as_movel(a=self.ACCELERATION/4.0, v=self.VELOCITY/4.0, r=0))
+
+        #################################################################
+        # Step 10
+        #################################################################
+        print("-----> Step 10 [open gripper]")
+        input()
+        # open gripper
+        if not self.SIMULATION:
+            self.command_client.send_gripper_request(constants.GRIPPER_OPEN_COMMAND)
+
+        #################################################################
+        # Step 11
+        #################################################################
+        print("-----> Step 11 [move a little above destination]")
+        input()
+        # get changed TCP angle-axis rotation
+        eef_angle_axis = self.eef_angle_axis_client.send_request().angle_axis
+
+        # move a little above target position
+        waypoint = deepcopy(self.DESTINATIONS[box])
+        waypoint.Z += self.BOX_SPACING * 2
+        waypoint.RX = eef_angle_axis.x
+        waypoint.RY = eef_angle_axis.y
+        waypoint.RZ = eef_angle_axis.z
+        # move at quarter speed and no blending
+        self.command_client.send_robot_request(waypoint.as_movel(a=self.ACCELERATION/4.0, v=self.VELOCITY/4.0, r=0))
+
+        #################################################################
+        # Step 12
+        #################################################################
+        print("-----> Step 12 [move sideways (X-axis) next to destination]")
+        input()
+        # move sideways (X-axis) next to final box position
+        waypoint = deepcopy(self.DESTINATIONS[box])
+        waypoint.X -= constants.BOX_SIDE * 2
+        waypoint.Z += self.BOX_SPACING * 2
+        waypoint.RX = eef_angle_axis.x
+        waypoint.RY = eef_angle_axis.y
+        waypoint.RZ = eef_angle_axis.z
+        
+        # move at half speed and no blending
+        self.command_client.send_robot_request(waypoint.as_movel(a=self.ACCELERATION/2.0, v=self.VELOCITY/2.0, r=0))
+
+        #################################################################
+        # Step 13
+        #################################################################
+        print("-----> Step 13 [rotate wrist_2 to +90 degrees]")
+        input()
+        # get current joint states
+        # self.JOINT_STATES_LOCK.acquire()
+        # joint_states = deepcopy(self.JOINT_STATES)
+        # self.JOINT_STATES_LOCK.release()
+        joint_states = self._get_joint_states()
+
+        # rotate wrist_2 +90 degrees
+        wrist_2_original = deepcopy(joint_states["wrist_2_joint"])
+        joint_states["wrist_2_joint"] = radians(degrees(wrist_2_original) + 90)
+        joint_values = [
+            joint_states["shoulder_pan_joint"],
+            joint_states["shoulder_lift_joint"],
+            joint_states["elbow_joint"],
+            joint_states["wrist_1_joint"],
+            joint_states["wrist_2_joint"],
+            joint_states["wrist_3_joint"]
+        ]
+        # move at half speed
+        self.command_client.send_robot_request(f"movej({joint_values},a={self.ACCELERATION/2.0},v={self.VELOCITY/2.0})")
+
+
+        # home position
+        # {'elbow_joint': -1.3455162144440802, 'shoulder_lift_joint': -1.8264590070761368, 'shoulder_pan_joint': -1.444100031683746, 'wrist_1_joint': -1.4677006886040482, 'wrist_2_joint': 1.573968083298984, 'wrist_3_joint': -0.3589956902247362}
+
+
+        # movej to rotate gripper (self.JOINT_STATES + rotation math)
+        # get eef_angle_axis_client coordinates
+        # movel to destination with new angle-axis orientation from previous call, but keep z
+        # move down by -z
+        # open gripper
+        # slow down!
+        # move back
+        # profit with original angle-axis orientation for table B
+
     def build_stairway_to_heaven(self):
         
         # movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
@@ -266,23 +494,29 @@ class DeusExCubus:
 
     def build_tower_of_babylon(self):
         
-        # movej([-1.570796327,-1.570796327,-1.570796327,-1.570796327,1.570796327,0],a=5.0,v=1.0)"
+        # TODO: reflect these changes in _move_box_sideways
+        # slow down
+        self.VELOCITY /= 1
+        self.ACCELERATION /= 1
 
+        # safely in reach with approach from above
         BOXES = [
             "box_3",
-            "box_6",
-            "box_14",
-            "box_9"
+            "box_6"
         ]
 
         # move boxes
         for box in BOXES:
             self._move_box(box)
 
-        print("Tower of Babylon ready.")
+        # unreachable from above
+        BOXES = [
+            "box_14",
+            "box_9"
+        ]
 
-    def ho(self):
-        response = self.eef_angle_axis_client.send_request()
-        print(response.success)
-        print(response.angle_axis)
-        print("Tropa")
+        # move boxes
+        for box in BOXES:
+            self._move_box_sideways(box)
+
+        print("Tower of Babylon ready.")

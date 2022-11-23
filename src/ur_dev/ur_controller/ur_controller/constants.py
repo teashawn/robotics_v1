@@ -1,5 +1,6 @@
 from ur_controller import models
 from visualization_msgs.msg import MarkerArray, Marker
+from math import radians
 
 GRIPPER_HEADER = """
 def Gripper():
@@ -2403,6 +2404,15 @@ B_1_Z_MAX = 0.800
 B_2_Z_MAX = 0.800
 B_3_Z_MAX = 0.450
 B_4_Z_MAX = 0.450
+
+HOME_POSITION_JOIN_STATES = [
+    radians(-90),
+    radians(-90),
+    radians(-90),
+    radians(-90),
+    radians(90),
+    radians(0)
+]
 
 BOX_SIDE = 0.110
 EDGE_OFFSET = BOX_SIDE #abs(WAYPOINTS["b_1"].X - WAYPOINTS["box_1"].X)
