@@ -49,7 +49,7 @@ ros2 run ur_controller ur_controller simulation=false
 
 ### Easter egg 🐣
 
-From repo root directory run
+**Please run in a maximised terminal**. From repo root directory run
 ```bash
 source install/setup.bash
 ros2 run ur_controller ur_controller east=eregg
