@@ -26,6 +26,7 @@ config.velocity=1.0
 config.box_spacing = 0.003
 config.pre_pick_z_offset = 2.0
 config.use_ascii_art = True
+config.placing_speed_factors = [1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.1]
 ```
 
 ## Running
